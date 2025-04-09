@@ -168,7 +168,7 @@ public class GitUtils {
                         //check if those pairs were already checked
                         String pairId = oldCommit.getName() + ":" + newCommit.getName();
                         if (seenPairs.contains(pairId)) {
-                            continue;
+                            break;
                         }
                         seenPairs.add(pairId);
 
