@@ -15,6 +15,7 @@ java {
 
 repositories {
     mavenCentral()
+
 }
 
 application {
@@ -34,6 +35,7 @@ dependencies {
 
     //implementation("com.github.gumtreediff:core:4.0.0-beta3")
     //implementation("com.github.gumtreediff:gen.jdt:4.0.0-beta3")
+    //implementation("com.github.gumtreediff:client:4.0.0-beta3")
     implementation(files("libs/gumtree.jar"))
 
     compileOnly("org.projectlombok:lombok:1.18.38")

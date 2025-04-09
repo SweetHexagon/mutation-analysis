@@ -1,9 +1,20 @@
 package com.example;
 
-import com.example.dto.FileResult;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.eclipse.jgit.revwalk.RevCommit;
+import com.github.gumtreediff.actions.EditScript;
+import com.github.gumtreediff.actions.EditScriptGenerator;
+import com.github.gumtreediff.actions.SimplifiedChawatheScriptGenerator;
+import com.github.gumtreediff.actions.model.Action;
+import com.github.gumtreediff.client.Run;
+import com.github.gumtreediff.gen.TreeGenerators;
+import com.github.gumtreediff.matchers.MappingStore;
+import com.github.gumtreediff.matchers.Matcher;
+import com.github.gumtreediff.matchers.Matchers;
+import com.github.gumtreediff.tree.Tree;
+import java.io.IOException;
 
+import org.antlr.v4.runtime.tree.ParseTree;
+import com.example.dto.FileResult;
+import org.eclipse.jgit.revwalk.RevCommit;
 import java.util.HashMap;
 
 public class Comparator {
