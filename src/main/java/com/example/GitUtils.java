@@ -5,6 +5,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.*;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
@@ -15,9 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -126,9 +125,9 @@ public class GitUtils {
         return new CommitPairWithFiles(older, newer, filePathsToCompare);
     }
 
-    public static CommitPairWithFiles processRepo(String repoUrl, String localPath) { // should return list of those
+    public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath) {
         try {
-            // Clone or open the repo
+            // Clone or open the repository
             File repoDir = new File(localPath);
             Git git;
             if (!repoDir.exists() || repoDir.listFiles() == null || Objects.requireNonNull(repoDir.listFiles()).length == 0) {
@@ -141,53 +140,65 @@ public class GitUtils {
             }
 
             Repository repository = git.getRepository();
+            List<CommitPairWithFiles> allPairs = new ArrayList<>();
 
-            // Walk through commits
-            List<RevCommit> commitList = new ArrayList<>();
-            try (RevWalk revWalk = new RevWalk(repository)) {
-                ObjectId headId = repository.resolve("HEAD");
-                if (headId == null) {
-                    headId = repository.resolve("MAIN");
-                }
+            Set<String> seenPairs = new HashSet<>();
 
-                revWalk.markStart(revWalk.parseCommit(headId));
-                for (RevCommit commit : revWalk) {
-                    commitList.add(commit);
-                }
-            }
+            List<Ref> branches = git.branchList().call();
 
-            // Iterate over commit pairs
-            List<CommitPairWithFiles> pairs = new ArrayList<>();
-            for (int i = 1; i < commitList.size(); i++) {
-                RevCommit newCommit = commitList.get(i - 1);
-                RevCommit oldCommit = commitList.get(i);
+            for (Ref branch : branches) {
+                String branchName = branch.getName();
+                System.out.println("Analyzing branch: " + branchName);
 
-                List<DiffEntry> diffs = getDiffs(repository, oldCommit, newCommit);
-                List<String> smallChangeFiles = new ArrayList<>();
+                try (RevWalk revWalk = new RevWalk(repository)) {
+                    ObjectId branchHead = repository.resolve(branchName);
+                    RevCommit headCommit = revWalk.parseCommit(branchHead);
 
-                for (DiffEntry diff : diffs) {
-                    if (diff.getChangeType() != DiffEntry.ChangeType.MODIFY) continue;
+                    revWalk.markStart(headCommit);
 
-                    int changedLines = countChangedLines(git, diff);
-                    System.out.println("Changed lines count: "+changedLines);
-                    if (changedLines <= 3) {
-                        smallChangeFiles.add(diff.getNewPath());
+                    List<RevCommit> commitList = new ArrayList<>();
+                    for (RevCommit commit : revWalk) {
+                        commitList.add(commit);
+                    }
+
+                    for (int i = 1; i < commitList.size(); i++) {
+                        RevCommit oldCommit = commitList.get(i - 1);
+                        RevCommit newCommit = commitList.get(i);
+
+                        //check if those pairs were already checked
+                        String pairId = oldCommit.getName() + ":" + newCommit.getName();
+                        if (seenPairs.contains(pairId)) {
+                            continue;
+                        }
+                        seenPairs.add(pairId);
+
+                        List<DiffEntry> diffs = getDiffs(repository, oldCommit, newCommit);
+                        List<String> smallChangeFiles = new ArrayList<>();
+
+                        for (DiffEntry diff : diffs) {
+                            if (diff.getChangeType() != DiffEntry.ChangeType.MODIFY) continue;
+
+                            int changedLines = countChangedLines(git, diff);
+                            if (changedLines <= 3) {
+                                smallChangeFiles.add(diff.getNewPath());
+                            }
+                        }
+
+                        if (!smallChangeFiles.isEmpty()) {
+                            allPairs.add(new CommitPairWithFiles(oldCommit, newCommit, smallChangeFiles));
+                        }
                     }
                 }
-
-                if (!smallChangeFiles.isEmpty()) {
-                    pairs.add(new CommitPairWithFiles(oldCommit, newCommit, smallChangeFiles));
-                }
             }
 
-            // For now just return first matching one
-            return pairs.isEmpty() ? null : pairs.get(0);
+            return allPairs;
 
         } catch (Exception e) {
             e.printStackTrace();
-            return null;
+            return Collections.emptyList();
         }
     }
+
 
     private static List<DiffEntry> getDiffs(Repository repo, RevCommit oldCommit, RevCommit newCommit) throws IOException {
         try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {

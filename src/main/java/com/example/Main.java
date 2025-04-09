@@ -6,6 +6,7 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 public class Main {
     static String localPath = "repo";
@@ -17,21 +18,39 @@ public class Main {
 
     }
 
-    public static void presentation(){
+    public static void presentation() {
         try {
             cleanUp();
         } catch (IOException e) {
             System.out.println("Error during cleanup");
         }
 
-        CommitPairWithFiles commitPairWithFiles = GitUtils.processRepo(repoUrl, localPath);
+        List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath);
 
-        System.out.println();
+        if (commitPairs.isEmpty()) {
+            System.out.println("No commit pairs with small changes found.");
+            return;
+        }
 
-        for (String file : commitPairWithFiles.changedFiles()) {
-            var resultOfComparison = Comparator.compareFileInTwoCommits(localPath, commitPairWithFiles.oldCommit(), commitPairWithFiles.newCommit(),file, true);
-            System.out.println(resultOfComparison);
+        for (CommitPairWithFiles pair : commitPairs) {
+            System.out.println("--------------------------------------------------");
+            System.out.println("Comparing commits:");
+            System.out.println("Old Commit: " + pair.oldCommit().getName());
+            System.out.println("New Commit: " + pair.newCommit().getName());
 
+            for (String file : pair.changedFiles()) {
+                System.out.println("\nFile: " + file);
+                var result = Comparator.compareFileInTwoCommits(
+                        localPath,
+                        pair.oldCommit(),
+                        pair.newCommit(),
+                        file,
+                        true
+                );
+                System.out.println(result);
+            }
+
+            System.out.println("--------------------------------------------------\n");
         }
     }
 
