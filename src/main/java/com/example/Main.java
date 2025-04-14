@@ -1,5 +1,6 @@
 package com.example;
 
+import com.example.parser.ASTParser;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.commons.io.FileUtils;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -11,6 +12,7 @@ import java.util.List;
 public class Main {
     static String localPath = "repo";
     static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
+    //static String repoUrl = "https://github.com/bartobri/no-more-secrets";
 
     public static void main(String[] args) {
         //test();
@@ -39,6 +41,10 @@ public class Main {
             System.out.println("New Commit: " + pair.newCommit().getName());
 
             for (String file : pair.changedFiles()) {
+                if (!file.endsWith(".c") && !file.endsWith(".java")) {
+                    continue; // skip non-C/Java files
+                }
+
                 System.out.println("\nFile: " + file);
                 var result = Comparator.compareFileInTwoCommits(
                         localPath,
@@ -55,8 +61,8 @@ public class Main {
     }
 
     public static void test() {
-        ParseTree oldTree = ASTParser.parseCFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c");
-        ParseTree newTree = ASTParser.parseCFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c");
+        ParseTree oldTree = ASTParser.parseFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c");
+        ParseTree newTree = ASTParser.parseFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c");
         TreeEditDistance treeEdit = new TreeEditDistance();
 
         System.out.println(oldTree.toStringTree());
