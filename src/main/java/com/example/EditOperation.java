@@ -16,10 +16,23 @@ public class EditOperation {
     @Override
     public String toString() {
         return switch (type) {
-            case RELABEL -> "Relabel: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
-            case INSERT -> "Insert: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
-            case DELETE -> "Delete: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
+            case RELABEL -> "Relabel: '" +
+                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
+                    "' -> '" +
+                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
+                    "'";
+            case INSERT -> "Insert: '" +
+                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
+                    "' -> '" +
+                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
+                    "'";
+            case DELETE -> "Delete: '" +
+                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
+                    "' -> '" +
+                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
+                    "'";
             default -> "Unknown";
         };
+
     }
 }

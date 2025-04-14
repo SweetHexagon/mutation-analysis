@@ -24,6 +24,8 @@ public class TreeComparator {
         String oldFilePath = GitUtils.extractFileAtCommit(localPath, oldCommit, fileName);
         String newFilePath = GitUtils.extractFileAtCommit(localPath, newCommit, fileName);
 
+        System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+
         if (oldFilePath == null || newFilePath == null) {
             System.out.println("Couldn't extract both versions for: " + fileName);
             return null;
@@ -71,7 +73,7 @@ public class TreeComparator {
             printDebugInfo(aptedOldTree, aptedNewTree, cost, apted);
         }
 
-        List<EditOperation> operations = getOperations(aptedOldTree, aptedNewTree, apted);
+        List<EditOperation> operations = getOperations(aptedOldTree, aptedNewTree, apted, debug);
         HashMap<Metrics, Integer> metrics = new HashMap<>();
         metrics.put(Metrics.TED, cost);
 
@@ -100,7 +102,8 @@ public class TreeComparator {
     }
 
     private static List<EditOperation> getOperations(MappedNode oldTree, MappedNode newTree,
-                                                     APTED<StringUnitCostModel, StringNodeData> apted) {
+                                                     APTED<StringUnitCostModel, StringNodeData> apted,
+                                                     boolean debug) {
         List<EditOperation> operations = new ArrayList<>();
         List<int[]> mappingPairs = apted.computeEditMapping();
         List<MappedNode> oldNodes = getPostOrder(oldTree);
@@ -112,6 +115,7 @@ public class TreeComparator {
         }
 
         List<MappedNode> deleteStreak = new ArrayList<>();
+        List<MappedNode> insertStreak = new ArrayList<>();
 
         for (int[] pair : mappingPairs) {
             int oldIdx = pair[0] - 1;
@@ -122,6 +126,10 @@ public class TreeComparator {
                 MappedNode newNode = newNodes.get(newIdx);
 
                 if (!Objects.equals(oldNode.getNodeData().getLabel(), newNode.getNodeData().getLabel())) {
+                    if (debug) {
+                        System.out.println("RELABELED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                    }
+
                     TreeNode fromNode = toTreeNode(oldNode);
                     TreeNode toNode = toTreeNode(newNode);
 
@@ -131,6 +139,10 @@ public class TreeComparator {
                     );
 
                     operations.add(new EditOperation(EditOperation.Type.RELABEL, fromNode, toNode));
+                } else {
+                    if (debug) {
+                        System.out.println("MATCHED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                    }
                 }
 
                 if (!deleteStreak.isEmpty()) {
@@ -138,11 +150,37 @@ public class TreeComparator {
                     deleteStreak.clear();
                 }
 
+                if (!insertStreak.isEmpty()) {
+                    handleInsertedSubtree(insertStreak, operations);
+                    insertStreak.clear();
+                }
+
+
             } else if (oldIdx >= 0) {
-                deleteStreak.add(oldNodes.get(oldIdx));
-            } else if (newIdx >= 0 && !deleteStreak.isEmpty()) {
-                handleDeletedSubtree(deleteStreak, operations);
-                deleteStreak.clear();
+                MappedNode oldNode = oldNodes.get(oldIdx);
+                if (debug) {
+                    System.out.println("DELETED: [" + oldNode.getNodeData().getLabel() + "]");
+                }
+
+                deleteStreak.add(oldNode);
+
+                if (!insertStreak.isEmpty()) {
+                    handleInsertedSubtree(insertStreak, operations);
+                    insertStreak.clear();
+                }
+
+            } else if (newIdx >= 0) {
+                MappedNode newNode = newNodes.get(newIdx);
+                if (debug) {
+                    System.out.println("INSERTED: [" + newNode.getNodeData().getLabel() + "]");
+                }
+
+                insertStreak.add(newNode);
+
+                if (!deleteStreak.isEmpty()) {
+                    handleDeletedSubtree(deleteStreak, operations);
+                    deleteStreak.clear();
+                }
             }
         }
 
@@ -150,31 +188,138 @@ public class TreeComparator {
             handleDeletedSubtree(deleteStreak, operations);
         }
 
+        if (!insertStreak.isEmpty()) {
+            handleInsertedSubtree(insertStreak, operations); // NEW
+        }
+
         return operations;
     }
+
+    private static void handleInsertedSubtree(List<MappedNode> insertedNodes, List<EditOperation> operations) {
+        if (insertedNodes.isEmpty()) return;
+
+        Set<MappedNode> insertedSet = new HashSet<>(insertedNodes);
+        List<MappedNode> topLevelInsertions = filterInsertionRoots(insertedNodes, insertedSet);
+
+        for (MappedNode insertedRoot : topLevelInsertions) {
+            // Find anchor: first node that exists in the old tree
+            MappedNode firstSurvivingDescendant = findFirstNonInsertedDescendant(insertedRoot, insertedSet);
+
+            TreeNode from = firstSurvivingDescendant != null ? firstSurvivingDescendant.getOriginal() : null;
+            TreeNode to = insertedRoot.getOriginal();
+
+            operations.add(new EditOperation(EditOperation.Type.INSERT, from, to));
+        }
+    }
+    private static List<MappedNode> filterInsertionRoots(List<MappedNode> insertedNodes, Set<MappedNode> insertedSet) {
+        List<MappedNode> roots = new ArrayList<>();
+
+        for (MappedNode node : insertedNodes) {
+            boolean isDescendant = false;
+            MappedNode parent = node.getParent();
+
+            while (parent != null) {
+                if (insertedSet.contains(parent)) {
+                    isDescendant = true;
+                    break;
+                }
+                parent = parent.getParent();
+            }
+
+            if (!isDescendant) {
+                roots.add(node);
+            }
+        }
+
+        return roots;
+    }
+
+    private static MappedNode findFirstNonInsertedDescendant(MappedNode root, Set<MappedNode> insertedSet) {
+        Queue<MappedNode> queue = new LinkedList<>();
+        queue.add(root);
+
+        while (!queue.isEmpty()) {
+            MappedNode current = queue.poll();
+
+            for (Node<StringNodeData> child : current.getChildren()) {
+                MappedNode mappedChild = (MappedNode) child;
+
+                if (!insertedSet.contains(mappedChild)) {
+                    return mappedChild;
+                }
+
+                queue.add(mappedChild);
+            }
+        }
+
+        return null;
+    }
+
+
+
+
+
 
     private static void handleDeletedSubtree(List<MappedNode> deletedNodes, List<EditOperation> operations) {
         if (deletedNodes.isEmpty()) return;
 
-        MappedNode highestNode = deletedNodes.stream()
-                .min(Comparator.comparingInt(n -> n.getOriginal().getDepth()))
-                .orElse(deletedNodes.get(0));
-
         Set<MappedNode> deletedSet = new HashSet<>(deletedNodes);
-        MappedNode firstUncommonChild = highestNode.getChildren().stream()
-                .map(child -> (MappedNode) child)
-                .filter(child -> !deletedSet.contains(child))
-                .findFirst()
-                .orElse(null);
+        List<MappedNode> topLevelDeletions = filterDeletionRoots(deletedNodes, deletedSet);
 
-        if (firstUncommonChild != null) {
-            operations.add(new EditOperation(
-                    EditOperation.Type.DELETE,
-                    highestNode.getOriginal(),
-                    firstUncommonChild.getOriginal()
-            ));
+        for (MappedNode deletedRoot : topLevelDeletions) {
+            // Traverse *all descendants* of this root to find first surviving (non-deleted) node
+            MappedNode firstRemainingDescendant = findFirstNonDeletedDescendant(deletedRoot, deletedSet);
+
+            TreeNode from = deletedRoot.getOriginal();
+            TreeNode to = firstRemainingDescendant != null ? firstRemainingDescendant.getOriginal() : null;
+
+            operations.add(new EditOperation(EditOperation.Type.DELETE, from, to));
         }
     }
+    private static List<MappedNode> filterDeletionRoots(List<MappedNode> deletedNodes, Set<MappedNode> deletedSet) {
+        List<MappedNode> roots = new ArrayList<>();
+
+        for (MappedNode node : deletedNodes) {
+            boolean isDescendant = false;
+            MappedNode parent = node.getParent();
+
+            while (parent != null) {
+                if (deletedSet.contains(parent)) {
+                    isDescendant = true;
+                    break;
+                }
+                parent = parent.getParent();
+            }
+
+            if (!isDescendant) {
+                roots.add(node);
+            }
+        }
+
+        return roots;
+    }
+
+    private static MappedNode findFirstNonDeletedDescendant(MappedNode root, Set<MappedNode> deletedSet) {
+        Queue<MappedNode> queue = new LinkedList<>();
+        queue.add(root);
+
+        while (!queue.isEmpty()) {
+            MappedNode current = queue.poll();
+
+            for (Node<StringNodeData> child : current.getChildren()) {
+                MappedNode mappedChild = (MappedNode) child;
+
+                if (!deletedSet.contains(mappedChild)) {
+                    return mappedChild;
+                }
+
+                queue.add(mappedChild);
+            }
+        }
+
+        return null;
+    }
+
 
     private static boolean isDescendant(Object possibleDescendant, Object possibleAncestor) {
         if (!(possibleDescendant instanceof TreeNode descendant) ||

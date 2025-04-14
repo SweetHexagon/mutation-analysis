@@ -124,7 +124,7 @@ public class GitUtils {
         return new CommitPairWithFiles(older, newer, filePathsToCompare);
     }
 
-    public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath) {
+    public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath, List<String> allowedExtensions) {
         try {
             // Clone or open the repository
             File repoDir = new File(localPath);
@@ -164,7 +164,7 @@ public class GitUtils {
                         RevCommit oldCommit = commitList.get(i - 1);
                         RevCommit newCommit = commitList.get(i);
 
-                        //check if those pairs were already checked
+                        // Check if those pairs were already checked
                         String pairId = oldCommit.getName() + ":" + newCommit.getName();
                         if (seenPairs.contains(pairId)) {
                             break;
@@ -177,9 +177,16 @@ public class GitUtils {
                         for (DiffEntry diff : diffs) {
                             if (diff.getChangeType() != DiffEntry.ChangeType.MODIFY) continue;
 
-                            int changedLines = countChangedLines(git, diff);
-                            if (changedLines <= 3) {
-                                smallChangeFiles.add(diff.getNewPath());
+                            String filePath = diff.getNewPath();
+                            // Check file extension
+                            for (String ext : allowedExtensions) {
+                                if (filePath.endsWith(ext)) {
+                                    int changedLines = countChangedLines(git, diff);
+                                    if (changedLines <= 3) {
+                                        smallChangeFiles.add(filePath);
+                                    }
+                                    break;
+                                }
                             }
                         }
 
@@ -197,6 +204,7 @@ public class GitUtils {
             return Collections.emptyList();
         }
     }
+
 
 
     private static List<DiffEntry> getDiffs(Repository repo, RevCommit oldCommit, RevCommit newCommit) throws IOException {
