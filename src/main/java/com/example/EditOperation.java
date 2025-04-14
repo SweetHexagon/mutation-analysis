@@ -16,9 +16,9 @@ public class EditOperation {
     @Override
     public String toString() {
         return switch (type) {
-            case RELABEL -> "Relabel: '" + fromNode.label + "' -> '" + toNode.label + "'";
-            case INSERT -> "Insert: '" + toNode.label + "'";
-            case DELETE -> "Delete: '" + fromNode.label + "'";
+            case RELABEL -> "Relabel: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
+            case INSERT -> "Insert: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
+            case DELETE -> "Delete: '" + fromNode.parseTreeOriginalNode.getText() + "' -> '" + toNode.parseTreeOriginalNode.getText() + "'";
             default -> "Unknown";
         };
     }

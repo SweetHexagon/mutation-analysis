@@ -1,3 +1,5 @@
-int and(bool a, bool b) {
-    return a && b;
+#include<stdlib.h>
+
+int p_abs(int a) {
+    return -abs(a++);
 }

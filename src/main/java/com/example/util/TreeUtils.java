@@ -1,5 +1,8 @@
-package com.example;
+package com.example.util;
 
+import com.example.MappedNode;
+import com.example.TreeNode;
+import eu.mihosoft.ext.apted.node.StringNodeData;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
@@ -33,6 +36,14 @@ public class TreeUtils {
             node.addChild(child);
         }
 
+        return node;
+    }
+
+    public static MappedNode convertToApted(TreeNode treeNode, MappedNode parentNode) {
+        MappedNode node = new MappedNode(treeNode.getLabel(), treeNode, parentNode);
+        for (TreeNode child : treeNode.getChildren()) {
+            node.addChild(convertToApted(child, node));
+        }
         return node;
     }
 

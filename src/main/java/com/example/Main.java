@@ -1,6 +1,7 @@
 package com.example;
 
-import com.example.parser.ASTParser;
+import com.example.dto.FileResult;
+import com.example.util.GitUtils;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.commons.io.FileUtils;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -15,8 +16,8 @@ public class Main {
     //static String repoUrl = "https://github.com/bartobri/no-more-secrets";
 
     public static void main(String[] args) {
-        //test();
-        presentation();
+        test();
+        //presentation();
 
     }
 
@@ -46,12 +47,12 @@ public class Main {
                 }
 
                 System.out.println("\nFile: " + file);
-                var result = Comparator.compareFileInTwoCommits(
+                var result = TreeComparator.compareFileInTwoCommits(
                         localPath,
                         pair.oldCommit(),
                         pair.newCommit(),
                         file,
-                        true
+                        false
                 );
                 System.out.println(result);
             }
@@ -61,25 +62,18 @@ public class Main {
     }
 
     public static void test() {
-        ParseTree oldTree = ASTParser.parseFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c");
-        ParseTree newTree = ASTParser.parseFile("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c");
-        TreeEditDistance treeEdit = new TreeEditDistance();
+        String oldFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c";
+        String newFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c";
 
-        System.out.println(oldTree.toStringTree());
-        System.out.println(oldTree.getChild(0).getText());
-        System.out.println(newTree.getChild(0).getText());
+        FileResult result = TreeComparator.compareTwoFilePaths(oldFilePath, newFilePath, true);
 
-        TreeNode convertedOldTree = TreeUtils.convert(oldTree);
-        TreeNode convertedNewTree = TreeUtils.convert(newTree);
-
-        System.out.println("converted Old Tree: " + convertedOldTree);
-        System.out.println("Converted New Tree: " + convertedNewTree);
-
-        System.out.println("distance: " + treeEdit.compare(
-                convertedOldTree,
-                convertedNewTree
-        ));
+        if (result != null) {
+            System.out.println(result.toString());
+        } else {
+            System.out.println("Comparison failed or files could not be parsed.");
+        }
     }
+
 
     public static void printTokens(ParseTree tree) {
         printTokensHelper(tree);
