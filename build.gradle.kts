@@ -26,7 +26,7 @@ dependencies {
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.2.0.202503040940-r")
 
     // Logging
-    implementation("org.slf4j:slf4j-simple:2.0.9")
+    //implementation("org.slf4j:slf4j-simple:2.0.9")
 
     // ANTLR parser
     antlr("org.antlr:antlr4:4.13.2")

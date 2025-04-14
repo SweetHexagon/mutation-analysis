@@ -16,8 +16,8 @@ public class Main {
     //static String repoUrl = "https://github.com/bartobri/no-more-secrets";
 
     public static void main(String[] args) {
-        test();
-        //presentation();
+        //test();
+        presentation();
 
     }
 
@@ -65,7 +65,7 @@ public class Main {
         String oldFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c";
         String newFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c";
 
-        FileResult result = TreeComparator.compareTwoFilePaths(oldFilePath, newFilePath, true);
+        FileResult result = TreeComparator.compareTwoFilePaths(oldFilePath, newFilePath, false);
 
         if (result != null) {
             System.out.println(result.toString());

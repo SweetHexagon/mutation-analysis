@@ -25,7 +25,7 @@ public class FileResult{
         if (editOperations != null) {
             result.append("Edit operations:\n");
             for(EditOperation editOperation : editOperations){
-                result.append("Operation: ").append(editOperation.toString()).append("\n");
+                result.append("  Operation: ").append(editOperation.toString()).append("\n");
             }
         }
 
