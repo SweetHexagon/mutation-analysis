@@ -11,13 +11,13 @@ public class ASTParser {
             return null;
         }
 
+        parser.disableErrorListeners();
+
         ParseTree tree = parser.parse(filePath);
         if (tree == null) {
-            System.err.println("Failed to parse file: " + filePath);
+            System.err.println("Error parsing file: " + filePath);
         }
 
         return tree;
     }
-
 }
-

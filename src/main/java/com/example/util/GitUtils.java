@@ -82,48 +82,6 @@ public class GitUtils {
         }
     }
 
-    public static CommitPairWithFiles processRepoMock(String repoUrl, String localPath) {
-        GitUtils.cloneRepository(repoUrl, localPath);
-        List<RevCommit> commits = GitUtils.getCommits(localPath);
-
-        if (commits.size() < 2) {
-            System.err.println("Not enough commits to compare.");
-            return null;
-        }
-
-        RevCommit newer = commits.get(0);
-        RevCommit older = commits.get(1);
-
-        List<String> filePathsToCompare = new ArrayList<>();
-
-        try (Repository repository = Git.open(new File(localPath)).getRepository();
-             Git git = new Git(repository)) {
-
-            CanonicalTreeParser oldTreeIter = new CanonicalTreeParser();
-            try (var reader = repository.newObjectReader()) {
-                oldTreeIter.reset(reader, older.getTree());
-            }
-
-            CanonicalTreeParser newTreeIter = new CanonicalTreeParser();
-            try (var reader = repository.newObjectReader()) {
-                newTreeIter.reset(reader, newer.getTree());
-            }
-
-            try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
-                formatter.setRepository(repository);
-                List<DiffEntry> diffs = formatter.scan(oldTreeIter, newTreeIter);
-                for (DiffEntry entry : diffs) {
-                    filePathsToCompare.add(entry.getNewPath());
-                }
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return new CommitPairWithFiles(older, newer, filePathsToCompare);
-    }
-
     public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath, List<String> allowedExtensions) {
         try {
             // Clone or open the repository
@@ -182,7 +140,7 @@ public class GitUtils {
                             for (String ext : allowedExtensions) {
                                 if (filePath.endsWith(ext)) {
                                     int changedLines = countChangedLines(git, diff);
-                                    if (changedLines <= 3) {
+                                    if (changedLines > 0 && changedLines <= 3) {
                                         smallChangeFiles.add(filePath);
                                     }
                                     break;

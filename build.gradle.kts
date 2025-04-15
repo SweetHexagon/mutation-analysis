@@ -55,7 +55,7 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.generateGrammarSource {
-    arguments = listOf("-visitor", "-no-listener")
+    arguments = listOf("-visitor")
     outputDirectory = file("build/generated-src/antlr/main")
 }
 

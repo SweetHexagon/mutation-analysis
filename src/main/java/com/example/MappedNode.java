@@ -7,12 +7,15 @@ import lombok.Setter;
 
 @Getter @Setter
 public class MappedNode extends Node<StringNodeData> {
-    private final TreeNode original;
+    private final TreeNode treeNode;
     private final MappedNode parent;
-    public MappedNode(String label, TreeNode original, MappedNode parent) {
+    public MappedNode(String label, TreeNode treeNode, MappedNode parent) {
         super(new StringNodeData(label));
-        this.original = original;
+        this.treeNode = treeNode;
         this.parent = parent;
     }
 
+    public TreeNode toTreeNode() {
+        return treeNode;
+    }
 }

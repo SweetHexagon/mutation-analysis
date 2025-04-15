@@ -4,4 +4,5 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public interface LanguageParser {
     ParseTree parse(String filePath);
+    void disableErrorListeners();
 }

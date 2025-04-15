@@ -187,7 +187,7 @@ public class TreeComparatorOutdated {
     }
 
     private static TreeNode toTreeNode(MappedNode node) {
-        return node.getOriginal();
+        return node.getTreeNode();
     }
 
     private static void handleDeletedSubtree(
@@ -201,7 +201,7 @@ public class TreeComparatorOutdated {
         // Get the highest node by comparing depths
         MappedNode highestNode = deletedNodes.get(0);
         for (MappedNode node : deletedNodes) {
-            if (node.getOriginal().getDepth() < highestNode.getOriginal().getDepth()) {
+            if (node.getTreeNode().getDepth() < highestNode.getTreeNode().getDepth()) {
                 highestNode = node;
             }
         }
@@ -209,7 +209,7 @@ public class TreeComparatorOutdated {
         MappedNode parent = highestNode.getParent();
         if (parent == null) return;
 
-        int parentIdxInOld = parent.getOriginal().getPostorderIndex() - 1;
+        int parentIdxInOld = parent.getTreeNode().getPostorderIndex() - 1;
         Integer mappedNewIdx = oldToNewMap.get(parentIdxInOld);
         if (mappedNewIdx == null || mappedNewIdx < 0) return;
 
@@ -227,13 +227,13 @@ public class TreeComparatorOutdated {
             MappedNode newChild = (MappedNode) newChildren.get(i);
 
             if (!oldLabel.equals(newLabel)) {
-                String oldText = oldChild.getOriginal().getParseTreeOriginalNode().getText();
-                String newText = newChild.getOriginal().getParseTreeOriginalNode().getText();
+                String oldText = oldChild.getTreeNode().getParseTreeOriginalNode().getText();
+                String newText = newChild.getTreeNode().getParseTreeOriginalNode().getText();
 
                 operations.add(new EditOperation(
                         EditOperation.Type.DELETE,
-                        oldChild.getOriginal(),
-                        newChild.getOriginal())
+                        oldChild.getTreeNode(),
+                        newChild.getTreeNode())
                 );
                 return;
             }
@@ -243,19 +243,19 @@ public class TreeComparatorOutdated {
         if (oldChildren.size() != newChildren.size()) {
             if (oldChildren.size() > newChildren.size()) {
                 MappedNode extra = (MappedNode) oldChildren.get(minSize);
-                String text = extra.getOriginal().getParseTreeOriginalNode().getText();
+                String text = extra.getTreeNode().getParseTreeOriginalNode().getText();
                 operations.add(new EditOperation(
                         EditOperation.Type.DELETE,
-                        extra.getOriginal(),
+                        extra.getTreeNode(),
                         null
                 ));
             } else {
                 MappedNode extra = (MappedNode) newChildren.get(minSize);
-                String text = extra.getOriginal().getParseTreeOriginalNode().getText();
+                String text = extra.getTreeNode().getParseTreeOriginalNode().getText();
                 operations.add(new EditOperation(
                         EditOperation.Type.INSERT,
                         null,
-                        extra.getOriginal()
+                        extra.getTreeNode()
                 ));
             }
         }
@@ -266,7 +266,7 @@ public class TreeComparatorOutdated {
         for (Node<StringNodeData> child : node.getChildren()) {
             currentIndex = assignPostOrderNumbers((MappedNode) child, currentIndex);
         }
-        node.getOriginal().setPostorderIndex(++currentIndex);
+        node.getTreeNode().setPostorderIndex(++currentIndex);
         return currentIndex;
     }
 

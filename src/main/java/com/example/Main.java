@@ -20,17 +20,16 @@ public class Main {
     static List<String> extensions = List.of(".c");
 
     public static void main(String[] args) {
+
         test();
+
         //presentation();
 
     }
 
     public static void presentation() {
-        try {
-            cleanUp();
-        } catch (IOException e) {
-            System.out.println("Error during cleanup");
-        }
+
+        cleanUp();
 
         List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath, extensions);
 
@@ -55,7 +54,14 @@ public class Main {
                         file,
                         false
                 );
-                System.out.println(result);
+
+
+                if ( result != null && result.getMetrics().get(Metrics.TED) > 0){
+                    System.out.println(result);
+                } else {
+                  System.out.println("Tree Edit distance: 0");
+                }
+
             }
 
             System.out.println("--------------------------------------------------\n");
@@ -63,9 +69,10 @@ public class Main {
     }
 
     public static void test() {
+//File path: C:\Users\aless\AppData\Local\Temp\commit_b771aa9663511fd60d4a01572a0c579e2edbbddc8000983893690568961_src_sneakers.c -> C:\Users\aless\AppData\Local\Temp\commit_b34fc9bf1155a22e881a1b0c806ed349e17ae57f2132728151862476374_src_sneakers.c
 
-        String oldFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_a771cf32c12f5986ef54c1432c5db879806ffa3a12048090915337496845_src_nmseffect.c";
-        String newFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_65901d987552773cc7b34c888756791efa8d8f83119343562658298880_src_nmseffect.c";
+        String oldFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_ed5e9f689fa28c6fe88be1f3076e6d9804ab3a013721886724850845387_src_nms.c";
+        String newFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_2eaafe1ef3dcf9db93796c62cbdca6ad184de26b6615462805272876347_src_nms.c";
         printFileContents("Old File", oldFilePath);
         printFileContents("New File", newFilePath);
         //String oldFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c";
@@ -89,6 +96,7 @@ public class Main {
             System.out.println("Error reading " + label + ": " + e.getMessage());
         }
     }
+
     public static void printTokens(ParseTree tree) {
         printTokensHelper(tree);
         System.out.println();
@@ -104,10 +112,14 @@ public class Main {
         }
     }
 
-    public static void cleanUp() throws IOException {
-        File dir = new File(localPath);
-        if (dir.exists()) {
-            FileUtils.deleteDirectory(dir);
+    public static void cleanUp() {
+        try {
+            File dir = new File(localPath);
+            if (dir.exists() && dir.isDirectory()) {
+                FileUtils.deleteDirectory(dir);
+            }
+        } catch (IOException e) {
+            System.out.println("Error during cleanup");
         }
     }
 }
