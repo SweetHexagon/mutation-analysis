@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -21,32 +22,35 @@ public class Main {
 
     public static void main(String[] args) {
 
-        test();
+        //test();
 
-        //presentation();
+        presentation();
 
     }
 
     public static void presentation() {
 
+        boolean debug = false;
+
         cleanUp();
 
-        List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath, extensions);
+        List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath, extensions, false);
 
         if (commitPairs.isEmpty()) {
             System.out.println("No commit pairs with small changes found.");
             return;
         }
 
+        List<FileResult> potentialMutants = new ArrayList<>();
+
+        int totalPairs = commitPairs.size();
+        int currentPair = 1;
+
         for (CommitPairWithFiles pair : commitPairs) {
-            System.out.println("--------------------------------------------------");
-            System.out.println("Comparing commits:");
-            System.out.println("Old Commit: " + pair.oldCommit().getName());
-            System.out.println("New Commit: " + pair.newCommit().getName());
+            System.out.println("analyzing " + currentPair + "/" + totalPairs + " commit pair");
 
             for (String file : pair.changedFiles()) {
 
-                System.out.println("\nFile: " + file);
                 var result = TreeComparator.compareFileInTwoCommits(
                         localPath,
                         pair.oldCommit(),
@@ -55,28 +59,42 @@ public class Main {
                         false
                 );
 
-
-                if ( result != null && result.getMetrics().get(Metrics.TED) > 0){
-                    System.out.println(result);
+                if (
+                        result != null &&
+                        result.getMetrics().get(Metrics.TED) > 0 &&
+                        result.getMetrics().get(Metrics.TED) < 15
+                ) {
+                    potentialMutants.add(result);
                 } else {
-                  System.out.println("Tree Edit distance: 0");
+                    if (debug){
+                        if (result != null) {
+                            System.out.println("Tree Edit distance: " + result.getMetrics().get(Metrics.TED));
+                        }else {
+                            System.out.println("Cant retrieve TED");
+                        }
+                    }
+
                 }
 
             }
-
-            System.out.println("--------------------------------------------------\n");
+            currentPair++;
         }
+
+        for (FileResult result : potentialMutants) {
+            System.out.println(result);
+        }
+
     }
 
     public static void test() {
 //File path: C:\Users\aless\AppData\Local\Temp\commit_b771aa9663511fd60d4a01572a0c579e2edbbddc8000983893690568961_src_sneakers.c -> C:\Users\aless\AppData\Local\Temp\commit_b34fc9bf1155a22e881a1b0c806ed349e17ae57f2132728151862476374_src_sneakers.c
 
-        String oldFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_ed5e9f689fa28c6fe88be1f3076e6d9804ab3a013721886724850845387_src_nms.c";
-        String newFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_2eaafe1ef3dcf9db93796c62cbdca6ad184de26b6615462805272876347_src_nms.c";
-        printFileContents("Old File", oldFilePath);
-        printFileContents("New File", newFilePath);
-        //String oldFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c";
-        //String newFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c";
+        //String oldFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_ed5e9f689fa28c6fe88be1f3076e6d9804ab3a013721886724850845387_src_nms.c";
+        //String newFilePath = "C:\\Users\\aless\\AppData\\Local\\Temp\\commit_2eaafe1ef3dcf9db93796c62cbdca6ad184de26b6615462805272876347_src_nms.c";
+        //printFileContents("Old File", oldFilePath);
+        //printFileContents("New File", newFilePath);
+        String oldFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.c";
+        String newFilePath = "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.c";
 
         FileResult result = TreeComparator.compareTwoFilePaths(oldFilePath, newFilePath, true);
 

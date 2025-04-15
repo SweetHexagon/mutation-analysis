@@ -24,14 +24,16 @@ public class TreeComparator {
         String oldFilePath = GitUtils.extractFileAtCommit(localPath, oldCommit, fileName);
         String newFilePath = GitUtils.extractFileAtCommit(localPath, newCommit, fileName);
 
-        System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+        if (debug) {
+            System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+        }
 
         if (oldFilePath == null || newFilePath == null) {
             System.out.println("Couldn't extract both versions for: " + fileName);
             return null;
         }
 
-        return compareFiles(oldFilePath, newFilePath, fileName, debug);
+        return compareFiles(oldFilePath, newFilePath, fileName,oldCommit, newCommit, debug);
     }
 
     public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
@@ -45,10 +47,10 @@ public class TreeComparator {
         }
 
         String fileName = extractFileName(newFilePath);
-        return compareFiles(oldFilePath, newFilePath, fileName, debug);
+        return compareFiles(oldFilePath, newFilePath, fileName, null, null, debug);
     }
 
-    private static FileResult compareFiles(String oldFilePath, String newFilePath, String fileName, boolean debug) {
+    private static FileResult compareFiles(String oldFilePath, String newFilePath, String fileName, RevCommit oldCommit, RevCommit newCommit, boolean debug) {
         ParseTree oldTree = ASTParser.parseFile(oldFilePath);
         ParseTree newTree = ASTParser.parseFile(newFilePath);
 
@@ -77,15 +79,17 @@ public class TreeComparator {
         HashMap<Metrics, Integer> metrics = new HashMap<>();
         metrics.put(Metrics.TED, cost);
 
-        return createFileResult(fileName, oldFilePath, newFilePath, operations, metrics);
+        return createFileResult(fileName, oldFilePath, newFilePath, operations, metrics, oldCommit.getName(), newCommit.getName());
     }
 
     private static FileResult createFileResult(String fileName, String original, String changed,
-                                               List<EditOperation> ops, HashMap<Metrics, Integer> metrics) {
+                                               List<EditOperation> ops, HashMap<Metrics, Integer> metrics, String oldCommit, String newCommit) {
         return FileResult.builder()
                 .name(fileName)
                 .editOperations(ops)
                 .metrics(metrics)
+                .oldCommit(oldCommit)
+                .newCommit(newCommit)
                 .build();
     }
 
@@ -142,8 +146,20 @@ public class TreeComparator {
                     relabeledNodes.add(oldNode);
 
                     operations.add(new EditOperation(EditOperation.Type.RELABEL, fromNode, toNode));
+
+
                 } else if (debug) {
                     System.out.println("MATCHED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                }
+
+                if (!deleteStreak.isEmpty()) {
+                    handleDeletedSubtree(deleteStreak, operations, relabeledNodes);
+                    deleteStreak.clear();
+                }
+
+                if (!insertStreak.isEmpty()) {
+                    handleInsertedSubtree(insertStreak, operations);
+                    insertStreak.clear();
                 }
 
             } else if (oldIdx >= 0) {
@@ -151,13 +167,25 @@ public class TreeComparator {
                 if (debug) {
                     System.out.println("DELETED: [" + oldNode.getNodeData().getLabel() + "]");
                 }
+
                 deleteStreak.add(oldNode);
+
+                if (!insertStreak.isEmpty()) {
+                    handleInsertedSubtree(insertStreak, operations);
+                    insertStreak.clear();
+                }
             } else if (newIdx >= 0) {
                 MappedNode newNode = newNodes.get(newIdx);
                 if (debug) {
                     System.out.println("INSERTED: [" + newNode.getNodeData().getLabel() + "]");
                 }
+
                 insertStreak.add(newNode);
+
+                if (!deleteStreak.isEmpty()) {
+                    handleDeletedSubtree(deleteStreak, operations, relabeledNodes);
+                    deleteStreak.clear();
+                }
 
             }
         }

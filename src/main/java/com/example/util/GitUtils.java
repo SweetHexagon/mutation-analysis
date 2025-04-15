@@ -82,7 +82,7 @@ public class GitUtils {
         }
     }
 
-    public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath, List<String> allowedExtensions) {
+    public static List<CommitPairWithFiles> processRepo(String repoUrl, String localPath, List<String> allowedExtensions, boolean debug) {
         try {
             // Clone or open the repository
             File repoDir = new File(localPath);
@@ -105,7 +105,9 @@ public class GitUtils {
 
             for (Ref branch : branches) {
                 String branchName = branch.getName();
-                System.out.println("Analyzing branch: " + branchName);
+                if (debug) {
+                    System.out.println("Analyzing branch: " + branchName);
+                }
 
                 try (RevWalk revWalk = new RevWalk(repository)) {
                     ObjectId branchHead = repository.resolve(branchName);
@@ -139,7 +141,7 @@ public class GitUtils {
                             // Check file extension
                             for (String ext : allowedExtensions) {
                                 if (filePath.endsWith(ext)) {
-                                    int changedLines = countChangedLines(git, diff);
+                                    int changedLines = countChangedLines(git, diff, debug);
                                     if (changedLines > 0 && changedLines <= 3) {
                                         smallChangeFiles.add(filePath);
                                     }
@@ -174,7 +176,7 @@ public class GitUtils {
         }
     }
 
-    private static int countChangedLines(Git git, DiffEntry diff) {
+    private static int countChangedLines(Git git, DiffEntry diff, boolean debug) {
         try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
             boolean includeInsertEdits = false; // change this count changes like "if" "return" "assert" etc
 
@@ -207,8 +209,9 @@ public class GitUtils {
                         break;
                 }
             }
-
-            System.out.printf("Semantic: %d, Structural: %d, File: %s%n", semanticCount, structuralCount, diff.getNewPath());
+            if (debug){
+                System.out.printf("Semantic: %d, Structural: %d, File: %s%n", semanticCount, structuralCount, diff.getNewPath());
+            }
 
             return semanticCount;
         } catch (IOException e) {
