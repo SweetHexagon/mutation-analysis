@@ -1,4 +1,4 @@
-package com.example.dto;
+package com.example.pojo;
 
 import lombok.AllArgsConstructor;
 
@@ -6,17 +6,13 @@ import java.util.List;
 
 @AllArgsConstructor
 public class RepoResult {
-    String name;
-    String secondCommit;
-    String firstCommit;
-    List<FileResult> filesResults;
+    public String repoUlr;
+    public List<FileResult> filesResults;
 
     @Override
     public String toString(){
         StringBuilder result = new StringBuilder();
-        result.append("Name: ").append(name).append("\n");
-        result.append("Second commit: ").append(secondCommit).append("\n");
-        result.append("First commit: ").append(firstCommit).append("\n");
+        result.append("Repo url: ").append(repoUlr).append("\n");
         for (FileResult fileResult : filesResults) {
             result.append(fileResult.toString()).append("\n");
         }

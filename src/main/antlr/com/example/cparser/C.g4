@@ -37,7 +37,6 @@ grammar C;
 package com.example.cparser;
 }
 
-
 primaryExpression
     : Identifier
     | Constant

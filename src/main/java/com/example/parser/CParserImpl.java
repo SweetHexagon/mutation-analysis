@@ -2,8 +2,9 @@ package com.example.parser;
 
 import com.example.cparser.CLexer;
 import com.example.cparser.CParser;
-import com.example.javaparser.Java8Lexer;
-import com.example.javaparser.Java8Parser;
+import com.example.javaparser.Java20Lexer;
+import com.example.javaparser.Java20Parser;
+import lombok.Getter;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTree;
 
@@ -11,9 +12,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+@Getter
 public class CParserImpl implements LanguageParser {
     private CLexer lexer;
     private CParser parser;
+    private CommonTokenStream tokens;
 
     @Override
     public ParseTree parse(String filePath) {
@@ -21,7 +24,7 @@ public class CParserImpl implements LanguageParser {
             String code = new String(Files.readAllBytes(Paths.get(filePath)));
             CharStream input = CharStreams.fromString(code);
             lexer = new CLexer(input);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
+            tokens = new CommonTokenStream(lexer);
             parser = new CParser(tokens);
 
             disableErrorListeners();

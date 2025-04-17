@@ -1,38 +1,34 @@
 package com.example;
 
-public class EditOperation {
-    public enum Type { INSERT, DELETE, RELABEL }
+import org.antlr.v4.runtime.ParserRuleContext;
 
-    public final Type type;
-    public final TreeNode fromNode;
-    public final TreeNode toNode;
+public record EditOperation(EditOperation.Type type, TreeNode fromNode, TreeNode toNode) {
 
-    public EditOperation(Type type, TreeNode fromNode, TreeNode toNode) {
-        this.type = type;
-        this.fromNode = fromNode;
-        this.toNode = toNode;
-    }
+    public enum Type {INSERT, DELETE, RELABEL}
 
     @Override
     public String toString() {
+        String fromText = safeNodeText(fromNode);
+        String toText = safeNodeText(toNode);
+
         return switch (type) {
-            case RELABEL -> "Relabel: '" +
-                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
-                    "' -> '" +
-                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
-                    "'";
-            case INSERT -> "Insert: '" +
-                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
-                    "' -> '" +
-                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
-                    "'";
-            case DELETE -> "Delete: '" +
-                    (fromNode != null && fromNode.parseTreeOriginalNode != null ? fromNode.parseTreeOriginalNode.getText() : "null") +
-                    "' -> '" +
-                    (toNode != null && toNode.parseTreeOriginalNode != null ? toNode.parseTreeOriginalNode.getText() : "null") +
-                    "'";
+            case RELABEL -> "Relabel: '" + fromText + "' -> '" + toText + "'";
+            case INSERT -> "Insert: '" + fromText + "' -> '" + toText + "'";
+            case DELETE -> "Delete: '" + fromText + "' -> '" + toText + "'";
             default -> "Unknown";
         };
+    }
 
+    private static String safeNodeText(TreeNode node) {
+        if (node == null) return "null (node)";
+        if (node.parseTreeOriginalNode == null) return "null (no tree)";
+        if (node.getTokens() != null && node.parseTreeOriginalNode instanceof ParserRuleContext ctx) {
+            try {
+                return node.getTokens().getText(ctx).trim();
+            } catch (Exception e) {
+                return "error extracting text";
+            }
+        }
+        return node.getLabel() != null ? node.getLabel() : "null (no label)";
     }
 }

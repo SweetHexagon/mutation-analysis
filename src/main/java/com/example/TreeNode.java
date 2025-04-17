@@ -2,6 +2,7 @@ package com.example;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,8 @@ public class TreeNode {
     public int postorderIndex;
     public int leftBoundaryIndex;
     public int depth;
+    public CommonTokenStream tokens;
+
 
 
     public TreeNode(String label, ParseTree parseTreeOriginalNode, int depth) {

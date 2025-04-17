@@ -1,7 +1,8 @@
 package com.example.parser;
 
-import com.example.javaparser.Java8Lexer;
-import com.example.javaparser.Java8Parser;
+import com.example.javaparser.Java20Lexer;
+import com.example.javaparser.Java20Parser;
+import lombok.Getter;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTree;
 
@@ -9,18 +10,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+@Getter
 public class JavaParserImpl implements LanguageParser {
-    private Java8Lexer lexer;
-    private Java8Parser parser;
+    private Java20Lexer lexer;
+    private Java20Parser parser;
+    private CommonTokenStream tokens;
 
     @Override
     public ParseTree parse(String filePath) {
         try {
             String code = new String(Files.readAllBytes(Paths.get(filePath)));
             CharStream input = CharStreams.fromString(code);
-            lexer = new Java8Lexer(input);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-            parser = new Java8Parser(tokens);
+            lexer = new Java20Lexer(input);
+            tokens = new CommonTokenStream(lexer);
+            parser = new Java20Parser(tokens);
 
             disableErrorListeners();
 

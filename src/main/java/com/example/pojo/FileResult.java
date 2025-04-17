@@ -1,8 +1,7 @@
-package com.example.dto;
+package com.example.pojo;
 
 import com.example.EditOperation;
 import com.example.Metrics;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;

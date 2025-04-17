@@ -178,46 +178,99 @@ public class GitUtils {
 
     private static int countChangedLines(Git git, DiffEntry diff, boolean debug) {
         try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
-            boolean includeInsertEdits = false; // change this count changes like "if" "return" "assert" etc
-
             formatter.setRepository(git.getRepository());
+            // ignore whitespace-only changes
             formatter.setDiffComparator(RawTextComparator.WS_IGNORE_ALL);
             formatter.setDetectRenames(true);
 
             EditList edits = formatter.toFileHeader(diff).toEditList();
 
-            int semanticCount = 0;
-            int structuralCount = 0;
-
-            for (var edit : edits) {
+            int changedLines = 0;
+            for (Edit edit : edits) {
                 switch (edit.getType()) {
                     case REPLACE:
-                        semanticCount += 1;
-                        structuralCount += (edit.getEndA() - edit.getBeginA()) + (edit.getEndB() - edit.getBeginB());
+                        // count both removed + added lines
+                        changedLines += (edit.getEndA() - edit.getBeginA())
+                                + (edit.getEndB() - edit.getBeginB());
                         break;
                     case INSERT:
-                        if (includeInsertEdits) {
-                            semanticCount += 1;
-                            structuralCount += (edit.getEndB() - edit.getBeginB());
-                        }
+                        // count inserted lines
+                        changedLines += (edit.getEndB() - edit.getBeginB());
                         break;
                     case DELETE:
-                        semanticCount += 1;
-                        structuralCount += (edit.getEndA() - edit.getBeginA());
+                        // count deleted lines
+                        changedLines += (edit.getEndA() - edit.getBeginA());
                         break;
-                    case EMPTY:
+                    default:
+                        // EMPTY edits contribute 0
                         break;
                 }
             }
-            if (debug){
-                System.out.printf("Semantic: %d, Structural: %d, File: %s%n", semanticCount, structuralCount, diff.getNewPath());
-            }
 
-            return semanticCount;
+            if (debug) {
+                System.out.printf("Changed lines: %d, File: %s%n",
+                        changedLines, diff.getNewPath());
+            }
+            return changedLines;
         } catch (IOException e) {
             System.err.println("Error in countChangedLines: " + e.getMessage());
             return Integer.MAX_VALUE;
         }
     }
+
+    public static List<String> extractFileAtTwoCommits(String repoPath, String relativeFilePath, String oldCommitSha, String newCommitSha, String outputDir) {
+        List<String> extractedPaths = new ArrayList<>();
+
+        try (Repository repository = Git.open(new File(repoPath)).getRepository();
+             RevWalk revWalk = new RevWalk(repository)) {
+
+            RevCommit oldCommit = revWalk.parseCommit(repository.resolve(oldCommitSha));
+            RevCommit newCommit = revWalk.parseCommit(repository.resolve(newCommitSha));
+
+            String oldExtracted = extractFileAtCommitToDirectory(repository, oldCommit, relativeFilePath, outputDir);
+            String newExtracted = extractFileAtCommitToDirectory(repository, newCommit, relativeFilePath, outputDir);
+
+            if (oldExtracted != null) extractedPaths.add(oldExtracted);
+            if (newExtracted != null) extractedPaths.add(newExtracted);
+
+        } catch (Exception e) {
+            System.err.println("Error extracting files: " + e.getMessage());
+        }
+
+        return extractedPaths;
+    }
+
+    private static String extractFileAtCommitToDirectory(Repository repository, RevCommit commit, String filePath, String outputDir) {
+        try {
+            RevTree tree = commit.getTree();
+            TreeWalk treeWalk = new TreeWalk(repository);
+            treeWalk.addTree(tree);
+            treeWalk.setRecursive(true);
+            treeWalk.setFilter(PathFilter.create(filePath));
+
+            if (!treeWalk.next()) {
+                System.out.println("File not found in commit: " + filePath);
+                return null;
+            }
+
+            ObjectId objectId = treeWalk.getObjectId(0);
+            ObjectLoader loader = repository.open(objectId);
+
+            File outputFile = new File(outputDir, "commit_" + commit.getName() + "_" + filePath.replace("/", "_"));
+            outputFile.getParentFile().mkdirs(); // Ensure the directory exists
+
+            try (FileOutputStream out = new FileOutputStream(outputFile)) {
+                loader.copyTo(out);
+            }
+
+            return outputFile.getAbsolutePath();
+
+        } catch (IOException e) {
+            System.err.println("Error extracting file: " + e.getMessage());
+            return null;
+        }
+    }
+
+
 
 }

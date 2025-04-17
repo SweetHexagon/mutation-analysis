@@ -1,19 +1,30 @@
 package com.example;
 
-import com.example.dto.FileResult;
-import com.example.parser.ASTParser;
+import com.example.cparser.CParser;
+import com.example.javaparser.Java20Parser;
+import com.example.parser.*;
+import com.example.pojo.FileResult;
+import com.example.pojo.ParsedFile;
 import com.example.util.GitUtils;
 import com.example.util.TreeUtils;
+import com.google.common.base.Stopwatch;
 import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
 import eu.mihosoft.ext.apted.distance.APTED;
 import eu.mihosoft.ext.apted.node.Node;
 import eu.mihosoft.ext.apted.node.StringNodeData;
+import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.util.concurrent.TimeUnit;
 
 import java.util.*;
 
 public class TreeComparator {
+
+    private static final Logger log = LoggerFactory.getLogger(TreeComparator.class);
 
     public static FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit, String fileName) {
         return compareFileInTwoCommits(localPath, oldCommit, newCommit, fileName, false);
@@ -24,16 +35,16 @@ public class TreeComparator {
         String oldFilePath = GitUtils.extractFileAtCommit(localPath, oldCommit, fileName);
         String newFilePath = GitUtils.extractFileAtCommit(localPath, newCommit, fileName);
 
-        if (debug) {
-            System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
-        }
+
+        System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+
 
         if (oldFilePath == null || newFilePath == null) {
             System.out.println("Couldn't extract both versions for: " + fileName);
             return null;
         }
 
-        return compareFiles(oldFilePath, newFilePath, fileName,oldCommit, newCommit, debug);
+        return compareFiles(oldFilePath, newFilePath, fileName, oldCommit, newCommit, debug);
     }
 
     public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
@@ -50,37 +61,116 @@ public class TreeComparator {
         return compareFiles(oldFilePath, newFilePath, fileName, null, null, debug);
     }
 
-    private static FileResult compareFiles(String oldFilePath, String newFilePath, String fileName, RevCommit oldCommit, RevCommit newCommit, boolean debug) {
-        ParseTree oldTree = ASTParser.parseFile(oldFilePath);
-        ParseTree newTree = ASTParser.parseFile(newFilePath);
 
-        if (oldTree == null || newTree == null) {
-            System.out.println("Skipping file due to parse failure.");
+    private static FileResult compareFiles(
+            String oldFilePath,
+            String newFilePath,
+            String fileName,
+            RevCommit oldCommit,
+            RevCommit newCommit,
+            boolean debug) {
+
+        Stopwatch sw = Stopwatch.createUnstarted();
+
+        // 1) PARSING
+        sw.start();
+        ParsedFile oldParsed = ASTParser.parseFile(oldFilePath);
+        ParsedFile newParsed = ASTParser.parseFile(newFilePath);
+        sw.stop();
+        if (debug) log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
+        sw.reset();
+
+        if (oldParsed == null || newParsed == null
+                || oldParsed.tree == null || newParsed.tree == null) {
+            log.warn("Skipping file due to parse failure: {}", fileName);
             return null;
         }
 
-        TreeNode convertedOldTree = TreeUtils.convert(oldTree);
-        TreeNode convertedNewTree = TreeUtils.convert(newTree);
+        // 2) SPLITTING INTO METHODS
+        sw.start();
+        List<ParseTree> oldMethods = FunctionSplitter.splitIntoFunctionTrees(oldParsed.tree, oldParsed.parser);
+        List<ParseTree> newMethods = FunctionSplitter.splitIntoFunctionTrees(newParsed.tree, newParsed.parser);
 
-        MappedNode aptedOldTree = TreeUtils.convertToApted(convertedOldTree, null);
-        MappedNode aptedNewTree = TreeUtils.convertToApted(convertedNewTree, null);
+        sw.stop();
+        if (debug) log.info("Splitting into methods took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
+        sw.reset();
 
-        assignPostOrderNumbers(aptedOldTree, 0);
-        assignPostOrderNumbers(aptedNewTree, 0);
+        List<EditOperation> allOps = new ArrayList<>();
+        int totalCost = 0;
 
-        APTED<StringUnitCostModel, StringNodeData> apted = new APTED<>(new StringUnitCostModel());
-        int cost = (int) apted.computeEditDistance(aptedOldTree, aptedNewTree);
+        // 3) PER‑METHOD CONVERT + EDIT‑DISTANCE
+        int count = Math.max(oldMethods.size(), newMethods.size());
+        for (int i = 0; i < count; i++) {
+            ParseTree o = i < oldMethods.size() ? oldMethods.get(i) : null;
+            ParseTree n = i < newMethods.size() ? newMethods.get(i) : null;
 
-        if (debug) {
-            printDebugInfo(aptedOldTree, aptedNewTree, cost, apted);
+            int oldPTSize = countParseTreeNodes(o);
+            int newPTSize = countParseTreeNodes(n);
+            if (debug) log.info("Method #{} -> parseTreeNodes old={} new={}", i, oldPTSize, newPTSize);
+
+            String methodName = o != null
+                    ? extractMethodName(o, oldParsed.parser)
+                    : (n != null ? extractMethodName(n, newParsed.parser) : "<empty>");
+
+            // a) convert to APTED trees
+            sw.start();
+            MappedNode mOld = (o != null
+                    ? TreeUtils.convertToApted(TreeUtils.convert(o, oldParsed.tokens), null)
+                    : TreeUtils.emptyMappedPlaceholder());
+            assignPostOrderNumbers(mOld, 0);
+
+            MappedNode mNew = (n != null
+                    ? TreeUtils.convertToApted(TreeUtils.convert(n, newParsed.tokens), null)
+                    : TreeUtils.emptyMappedPlaceholder());
+            assignPostOrderNumbers(mNew, 0);
+            sw.stop();
+            long convertMs = sw.elapsed(TimeUnit.MILLISECONDS);
+
+            List<MappedNode> oldNodes = getPostOrder(mOld);
+            List<MappedNode> newNodes = getPostOrder(mNew);
+
+            if (debug) log.info("Comparing method \"{}\": oldTreeNodes={} newTreeNodes={}",
+                    methodName, oldNodes.size(), newNodes.size());
+
+            sw.reset();
+            // b) compute edit distance
+            sw.start();
+            APTED<StringUnitCostModel, StringNodeData> apted =
+                    new APTED<>(new StringUnitCostModel());
+
+
+            int cost = (int) apted.computeEditDistance(mOld, mNew);
+            sw.stop();
+            long distMs = sw.elapsed(TimeUnit.MILLISECONDS);
+            sw.reset();
+
+            totalCost += cost;
+
+            if (debug) {
+                log.info("Method #{} [{}] -> convert={} ms, editDistance={} ms (cost={}) \n",
+                        i, methodName, convertMs, distMs, cost);
+            }
+
+            allOps.addAll(getOperations(mOld, mNew, apted, debug));
         }
 
-        List<EditOperation> operations = getOperations(aptedOldTree, aptedNewTree, apted, debug);
-        HashMap<Metrics, Integer> metrics = new HashMap<>();
-        metrics.put(Metrics.TED, cost);
+        // 4) BUILD RESULT
+        sw.start();
+        HashMap<Metrics,Integer> metrics = new HashMap<>();
+        metrics.put(Metrics.TED, totalCost);
+        FileResult result = createFileResult(
+                fileName, oldFilePath, newFilePath,
+                allOps, metrics,
+                oldCommit  != null ? oldCommit.getName() : null,
+                newCommit  != null ? newCommit.getName() : null
+        );
+        sw.stop();
+        if (debug) log.info("Building FileResult took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
 
-        return createFileResult(fileName, oldFilePath, newFilePath, operations, metrics, oldCommit.getName(), newCommit.getName());
+        return result;
     }
+
+
 
     private static FileResult createFileResult(String fileName, String original, String changed,
                                                List<EditOperation> ops, HashMap<Metrics, Integer> metrics, String oldCommit, String newCommit) {
@@ -132,15 +222,15 @@ public class TreeComparator {
 
                 if (!Objects.equals(oldNode.getNodeData().getLabel(), newNode.getNodeData().getLabel())) {
                     if (debug) {
-                        System.out.println("RELABELED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                        //System.out.println("RELABELED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
                     }
 
                     TreeNode fromNode = oldNode.toTreeNode();
                     TreeNode toNode = newNode.toTreeNode();
 
                     operations.removeIf(op ->
-                            op.type == EditOperation.Type.RELABEL &&
-                                    isDescendant(op.fromNode, fromNode)
+                            op.type() == EditOperation.Type.RELABEL &&
+                                    isDescendant(op.fromNode(), fromNode)
                     );
 
                     relabeledNodes.add(oldNode);
@@ -149,7 +239,7 @@ public class TreeComparator {
 
 
                 } else if (debug) {
-                    System.out.println("MATCHED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                    //System.out.println("MATCHED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
                 }
 
                 if (!deleteStreak.isEmpty()) {
@@ -165,7 +255,7 @@ public class TreeComparator {
             } else if (oldIdx >= 0) {
                 MappedNode oldNode = oldNodes.get(oldIdx);
                 if (debug) {
-                    System.out.println("DELETED: [" + oldNode.getNodeData().getLabel() + "]");
+                    //System.out.println("DELETED: [" + oldNode.getNodeData().getLabel() + "]");
                 }
 
                 deleteStreak.add(oldNode);
@@ -177,7 +267,7 @@ public class TreeComparator {
             } else if (newIdx >= 0) {
                 MappedNode newNode = newNodes.get(newIdx);
                 if (debug) {
-                    System.out.println("INSERTED: [" + newNode.getNodeData().getLabel() + "]");
+                    //System.out.println("INSERTED: [" + newNode.getNodeData().getLabel() + "]");
                 }
 
                 insertStreak.add(newNode);
@@ -398,4 +488,31 @@ public class TreeComparator {
         }
         list.add(node);
     }
+
+    private static String extractMethodName(ParseTree tree, LanguageParser parser) {
+        if (parser instanceof JavaParserImpl && tree instanceof Java20Parser.MethodDeclarationContext) {
+            Java20Parser.MethodDeclarationContext ctx = (Java20Parser.MethodDeclarationContext) tree;
+            return ctx.methodHeader().methodDeclarator().identifier().getText();
+
+        } else if (parser instanceof CParserImpl && tree instanceof CParser.FunctionDefinitionContext) {
+            CParser.FunctionDefinitionContext ctx = (CParser.FunctionDefinitionContext) tree;
+            return ctx.declarator().directDeclarator().directDeclarator().getText();
+
+        }
+        // Add more parser-specific extraction logic here if needed.
+
+        throw new UnsupportedOperationException("Unsupported parser type or context: " + parser.getClass().getSimpleName());
+    }
+
+    private static int countParseTreeNodes(ParseTree t) {
+        if (t == null) return 0;
+        int cnt = 1;                    // count this node
+        for (int i = 0; i < t.getChildCount(); i++) {
+            cnt += countParseTreeNodes(t.getChild(i));
+        }
+        return cnt;
+    }
+
+
+
 }
