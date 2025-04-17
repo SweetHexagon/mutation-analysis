@@ -20,6 +20,7 @@ public class ResultMapper {
                 .type(op.type().name())
                 .fromText(getTextSafe(op.fromNode()))
                 .toText(getTextSafe(op.toNode()))
+                .context(op.context())
                 .build();
     }
 

@@ -2,95 +2,86 @@ package com.example.util;
 
 import com.example.MappedNode;
 import com.example.TreeNode;
+import lombok.Getter;
+import lombok.Setter;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
+@Getter @Setter
 public class TreeUtils {
     public static TreeNode convert(ParseTree parseTree, CommonTokenStream tokens) {
-        return convertHelperOriginal(parseTree, 0, tokens);
-    }
-    private static TreeNode convertHelper(ParseTree parseTree, int depth, CommonTokenStream tokens) {
-        if (parseTree instanceof TerminalNode) {
-            String text = parseTree.getText();
-            if (text.matches("[;(){}\\[\\]]")) {  // trivial tokens skipped
-                return null;
-            }
-
-            TreeNode terminalNode = new TreeNode(text, parseTree, depth);
-            terminalNode.setTokens(tokens); // <-- set token stream
-            return terminalNode;
-        }
-
-        int levelsSkipped = 0;
-        while (parseTree.getChildCount() == 1 && !(parseTree.getChild(0) instanceof TerminalNode)) {
-            parseTree = parseTree.getChild(0);
-            levelsSkipped++;
-        }
-
-        int currentDepth = depth + levelsSkipped;
-
-        if (parseTree.getChildCount() == 1 && parseTree.getChild(0) instanceof TerminalNode) {
-            String text = parseTree.getChild(0).getText();
-            if (text.matches("[;(){}\\[\\]]")) {  // trivial tokens skipped
-                return null;
-            }
-            TreeNode singleTerminal = new TreeNode(text, parseTree, currentDepth + 1);
-            singleTerminal.setTokens(tokens); // <-- set token stream
-            return singleTerminal;
-        }
-
-        String label = parseTree.getClass().getSimpleName().replace("Context", "");
-        TreeNode node = new TreeNode(label, parseTree, currentDepth);
-        node.setTokens(tokens); // <-- set token stream
-
-        for (int i = 0; i < parseTree.getChildCount(); i++) {
-            TreeNode child = convertHelper(parseTree.getChild(i), currentDepth + 1, tokens);
-            if (child != null) { // Check if child is not trivial/skipped
-                node.addChild(child);
-            }
-        }
-
-        return node;
+        return convertHelper(parseTree, 0, tokens);
     }
 
-    private static TreeNode convertHelperOriginal(ParseTree parseTree, int depth, CommonTokenStream tokens) {
-        if (parseTree instanceof TerminalNode) {
+    private static TreeNode convertHelper(ParseTree parseTree,
+                                          int depth,
+                                          CommonTokenStream tokens) {
 
-            TreeNode terminalNode = new TreeNode(parseTree.getText(), parseTree, depth);
-            terminalNode.setTokens(tokens); // <-- set token stream
-            return terminalNode;
+        /* ────────────────────────── TERMINAL ─────────────────────────── */
+        if (parseTree instanceof TerminalNode term) {
+            String text = term.getText();
+            if (text.matches("[;(){}\\[\\]]")) {        // trivial punctuation
+                return null;
+            }
+            int line = term.getSymbol().getLine();
+            TreeNode leaf = new TreeNode(text, parseTree, depth, line);
+            leaf.setEndLine(line);                      // same line for terminals
+            leaf.setTokens(tokens);
+            return leaf;
         }
 
-        int levelsSkipped = 0;
-        while (parseTree.getChildCount() == 1 && !(parseTree.getChild(0) instanceof TerminalNode)) {
+        /* ───── COLLAPSE CHAINS OF SINGLE NON‑TERMINAL CHILDREN ──────── */
+        int skipped = 0;
+        while (parseTree.getChildCount() == 1 &&
+                !(parseTree.getChild(0) instanceof TerminalNode)) {
             parseTree = parseTree.getChild(0);
-            levelsSkipped++;
+            skipped++;
+        }
+        int curDepth = depth + skipped;
+
+        /* ───── CASE: SINGLE CHILD THAT *IS* TERMINAL ─────────────────── */
+        if (parseTree.getChildCount() == 1 &&
+                parseTree.getChild(0) instanceof TerminalNode t) {
+            String text = t.getText();
+            if (text.matches("[;(){}\\[\\]]")) {
+                return null;
+            }
+            int line = t.getSymbol().getLine();
+            TreeNode leaf = new TreeNode(text, parseTree, curDepth + 1, line);
+            leaf.setEndLine(line);
+            leaf.setTokens(tokens);
+            return leaf;
         }
 
-        int currentDepth = depth + levelsSkipped;
+        /* ─────────────────────── NON‑TERMINAL NODE ───────────────────── */
+        ParserRuleContext ctx = (ParserRuleContext) parseTree;
+        String label   = parseTree.getClass().getSimpleName().replace("Context", "");
+        int startLine  = ctx.getStart().getLine();        // first token line
 
-        if (parseTree.getChildCount() == 1 && parseTree.getChild(0) instanceof TerminalNode) {
-            String text = parseTree.getChild(0).getText();
-            TreeNode singleTerminal = new TreeNode(text, parseTree, currentDepth + 1);
-            singleTerminal.setTokens(tokens); // <-- set token stream
-            return singleTerminal;
-        }
-
-        String label = parseTree.getClass().getSimpleName().replace("Context", "");
-        TreeNode node = new TreeNode(label, parseTree, currentDepth);
-        node.setTokens(tokens); // <-- set token stream
+        TreeNode node  = new TreeNode(label, parseTree, curDepth, startLine);
+        node.setTokens(tokens);
 
         for (int i = 0; i < parseTree.getChildCount(); i++) {
-            TreeNode child = convertHelper(parseTree.getChild(i), currentDepth + 1, tokens);
+            TreeNode child = convertHelper(parseTree.getChild(i), curDepth + 1, tokens);
             if (child != null) {
                 node.addChild(child);
-            }        }
+            }
+        }
 
+    /* set end‑line = last (non‑null) child’s end line,
+       fallback to ctx.getStop() when there are no children               */
+        if (!node.getChildren().isEmpty()) {
+            int lastLine = node.getChildren()
+                    .get(node.getChildren().size() - 1)
+                    .getEndLine();
+            node.setEndLine(lastLine);
+        } else {
+            node.setEndLine(ctx.getStop().getLine());
+        }
         return node;
     }
-
-
 
     public static MappedNode convertToApted(TreeNode treeNode, MappedNode parentNode) {
         MappedNode node = new MappedNode(treeNode.getLabel(), treeNode, parentNode);

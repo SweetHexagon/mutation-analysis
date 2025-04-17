@@ -2,21 +2,34 @@ package com.example;
 
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public record EditOperation(EditOperation.Type type, TreeNode fromNode, TreeNode toNode) {
+import java.util.List;
+
+public record EditOperation(EditOperation.Type type, TreeNode fromNode, TreeNode toNode, String method, List<String> context) {
 
     public enum Type {INSERT, DELETE, RELABEL}
 
+    public EditOperation(Type type, TreeNode fromNode, TreeNode toNode) {
+        this(type, fromNode, toNode, null, List.of());
+    }
+
     @Override
     public String toString() {
-        String fromText = safeNodeText(fromNode);
-        String toText = safeNodeText(toNode);
+        String from = safeNodeText(fromNode);
+        String to   = safeNodeText(toNode);
 
-        return switch (type) {
-            case RELABEL -> "Relabel: '" + fromText + "' -> '" + toText + "'";
-            case INSERT -> "Insert: '" + fromText + "' -> '" + toText + "'";
-            case DELETE -> "Delete: '" + fromText + "' -> '" + toText + "'";
-            default -> "Unknown";
-        };
+        StringBuilder sb = new StringBuilder();
+        switch (type) {
+            case RELABEL -> sb.append("Relabel: '").append(from).append("' -> '").append(to).append('\'');
+            case INSERT  -> sb.append("Insert : '").append(from).append("' -> '").append(to).append('\'');
+            case DELETE  -> sb.append("Delete : '").append(from).append("' -> '").append(to).append('\'');
+            default      -> sb.append("Unknown");
+        }
+        sb.append("  (in ").append(method).append(')').append(System.lineSeparator());
+
+        if (context != null && !context.isEmpty()) {
+            for (String line : context) sb.append("    ").append(line).append(System.lineSeparator());
+        }
+        return sb.toString();
     }
 
     private static String safeNodeText(TreeNode node) {

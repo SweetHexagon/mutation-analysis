@@ -21,19 +21,19 @@ import java.util.List;
 
 public class Main {
     static String localPath = "repo";
-    //static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
+    static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
     //static String repoUrl = "https://github.com/bartobri/no-more-secrets";
     //static String repoUrl = "https://github.com/cfenollosa/os-tutorial";
-    static String repoUrl = "https://github.com/apache/commons-lang";
+    //static String repoUrl = "https://github.com/apache/commons-lang";
 
     static List<String> extensions = List.of(".c", ".java");
 
     public static void main(String[] args) {
         //cleanUp();
 
-        test();
+        //test();
 
-        //presentation();
+        presentation();
 
     }
 
@@ -41,7 +41,7 @@ public class Main {
 
         boolean debug = false;
 
-        cleanUp();
+        cleanUp(localPath);
 
         List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath, extensions, false);
 
@@ -108,15 +108,16 @@ public class Main {
         String relativePath = "src/main/java/org/apache/commons/lang3/builder/HashCodeBuilder.java";
         String outputDir = "D:\\Java projects\\mutation-analysis\\src\\main\\resources\\extracted_files";
 
+        cleanUp(outputDir);
 
         List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath, relativePath, oldSha, newSha, outputDir);
         //List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
         if (extractedPaths.size() == 2) {
-            String oldFilePath = extractedPaths.get(0);
-            String newFilePath = extractedPaths.get(1);
 
-            printFileContents("Old File", oldFilePath);
-            printFileContents("New File", newFilePath);
+            //String oldFilePath = extractedPaths.get(0);
+            //String newFilePath = extractedPaths.get(1);
+            //printFileContents("Old File", oldFilePath);
+            //printFileContents("New File", newFilePath);
 
             FileResult result = TreeComparator.compareTwoFilePaths(extractedPaths.get(0), extractedPaths.get(1), true);
 
@@ -155,9 +156,9 @@ public class Main {
         }
     }
 
-    public static void cleanUp() {
+    public static void cleanUp(String path) {
         try {
-            File dir = new File(localPath);
+            File dir = new File(path);
             if (dir.exists() && dir.isDirectory()) {
                 FileUtils.deleteDirectory(dir);
             }

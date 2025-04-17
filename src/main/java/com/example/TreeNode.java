@@ -17,13 +17,20 @@ public class TreeNode {
     public int leftBoundaryIndex;
     public int depth;
     public CommonTokenStream tokens;
+    private int startLine;
+    private int endLine;
 
 
-
-    public TreeNode(String label, ParseTree parseTreeOriginalNode, int depth) {
+    public TreeNode(String label, ParseTree parseTreeOriginalNode, int depth, int startLine) {
         this.label = label;
         this.parseTreeOriginalNode = parseTreeOriginalNode;
         this.depth = depth;
+        this.startLine = startLine;
+        this.endLine = startLine;
+    }
+
+    public TreeNode(String label, ParseTree pt, int depth) {
+        this(label, pt, depth, -1);
     }
 
     public void addChild(TreeNode child) {

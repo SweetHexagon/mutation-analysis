@@ -18,11 +18,18 @@ import org.antlr.v4.runtime.tree.TerminalNode;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 import java.util.*;
 
 public class TreeComparator {
+
+    private static final int CONTEXT_MARGIN = 0;
 
     private static final Logger log = LoggerFactory.getLogger(TreeComparator.class);
 
@@ -57,9 +64,10 @@ public class TreeComparator {
             return null;
         }
 
-        String fileName = extractFileName(newFilePath);
+        String fileName = extractName(oldFilePath,newFilePath);
         return compareFiles(oldFilePath, newFilePath, fileName, null, null, debug);
     }
+
 
 
     private static FileResult compareFiles(
@@ -151,7 +159,14 @@ public class TreeComparator {
                         i, methodName, convertMs, distMs, cost);
             }
 
-            allOps.addAll(getOperations(mOld, mNew, apted, debug));
+            try {
+                allOps.addAll(getOperations(
+                        mOld, mNew, apted,
+                        Paths.get(oldFilePath), Paths.get(newFilePath),
+                        methodName, debug));
+            } catch (IOException io) {
+                log.error("Failed to build edit‑operation contexts for {}", fileName, io);
+            }
         }
 
         // 4) BUILD RESULT
@@ -183,10 +198,6 @@ public class TreeComparator {
                 .build();
     }
 
-    private static String extractFileName(String path) {
-        if (path == null || path.isEmpty()) return "unknown";
-        return path.substring(path.lastIndexOf('/') + 1).replace("\\", "");
-    }
 
     private static void printDebugInfo(MappedNode oldTree, MappedNode newTree, int cost,
                                        APTED<StringUnitCostModel, StringNodeData> apted) {
@@ -195,103 +206,113 @@ public class TreeComparator {
         System.out.println("Edit Distance Cost: " + cost);
     }
 
-    private static List<EditOperation> getOperations(MappedNode oldTree, MappedNode newTree,
-                                                     APTED<StringUnitCostModel, StringNodeData> apted,
-                                                     boolean debug) {
-        List<EditOperation> operations = new ArrayList<>();
+    /**
+     * Builds the list of EditOperation objects for one method, then
+     * enriches each operation with uniform context lines.
+     */
+    private static List<EditOperation> getOperations(
+            MappedNode oldTree,
+            MappedNode newTree,
+            APTED<StringUnitCostModel, StringNodeData> apted,
+            Path oldFile,
+            Path newFile,
+            String methodName,
+            boolean debug) throws IOException {
+
+        /* ------------------------------------------------------------------
+         * 1) ORIGINAL LOGIC – produce the 'raw' list the same way as before
+         * ------------------------------------------------------------------ */
+        List<EditOperation> raw = new ArrayList<>();
+
         List<int[]> mappingPairs = apted.computeEditMapping();
         List<MappedNode> oldNodes = getPostOrder(oldTree);
         List<MappedNode> newNodes = getPostOrder(newTree);
-        Map<Integer, Integer> oldToNewMap = new HashMap<>();
-
-        for (int[] pair : mappingPairs) {
-            oldToNewMap.put(pair[0] - 1, pair[1] - 1);
-        }
 
         List<MappedNode> deleteStreak = new ArrayList<>();
         List<MappedNode> insertStreak = new ArrayList<>();
-        Set<MappedNode> relabeledNodes = new HashSet<>();
+        Set<MappedNode>  relabeled    = new HashSet<>();
 
-        for (int[] pair : mappingPairs) {
-            int oldIdx = pair[0] - 1;
-            int newIdx = pair[1] - 1;
+        for (int[] p : mappingPairs) {
+            int oldIdx = p[0] - 1, newIdx = p[1] - 1;
 
+            /* ───── MATCH / RELABEL ─────────────────────────────────────── */
             if (oldIdx >= 0 && newIdx >= 0) {
-                MappedNode oldNode = oldNodes.get(oldIdx);
-                MappedNode newNode = newNodes.get(newIdx);
+                MappedNode o = oldNodes.get(oldIdx);
+                MappedNode n = newNodes.get(newIdx);
 
-                if (!Objects.equals(oldNode.getNodeData().getLabel(), newNode.getNodeData().getLabel())) {
-                    if (debug) {
-                        //System.out.println("RELABELED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
-                    }
+                if (!Objects.equals(o.getNodeData().getLabel(),
+                        n.getNodeData().getLabel())) {
 
-                    TreeNode fromNode = oldNode.toTreeNode();
-                    TreeNode toNode = newNode.toTreeNode();
+                    TreeNode from = o.toTreeNode();
+                    TreeNode to   = n.toTreeNode();
 
-                    operations.removeIf(op ->
-                            op.type() == EditOperation.Type.RELABEL &&
-                                    isDescendant(op.fromNode(), fromNode)
-                    );
+                    /* remove nested relabels */
+                    raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL
+                            && isDescendant(op.fromNode(), from));
 
-                    relabeledNodes.add(oldNode);
-
-                    operations.add(new EditOperation(EditOperation.Type.RELABEL, fromNode, toNode));
-
-
-                } else if (debug) {
-                    //System.out.println("MATCHED: [" + oldNode.getNodeData().getLabel() + "] ↔ [" + newNode.getNodeData().getLabel() + "]");
+                    relabeled.add(o);
+                    raw.add(new EditOperation(EditOperation.Type.RELABEL, from, to));
                 }
 
-                if (!deleteStreak.isEmpty()) {
-                    handleDeletedSubtree(deleteStreak, operations, relabeledNodes);
+                if (!deleteStreak.isEmpty()) {        // flush streaks
+                    handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
-
                 if (!insertStreak.isEmpty()) {
-                    handleInsertedSubtree(insertStreak, operations);
+                    handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
                 }
 
+                /* ───── DELETE ONLY ─────────────────────────────────────────── */
             } else if (oldIdx >= 0) {
-                MappedNode oldNode = oldNodes.get(oldIdx);
-                if (debug) {
-                    //System.out.println("DELETED: [" + oldNode.getNodeData().getLabel() + "]");
-                }
-
-                deleteStreak.add(oldNode);
+                deleteStreak.add(oldNodes.get(oldIdx));
 
                 if (!insertStreak.isEmpty()) {
-                    handleInsertedSubtree(insertStreak, operations);
+                    handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
                 }
-            } else if (newIdx >= 0) {
-                MappedNode newNode = newNodes.get(newIdx);
-                if (debug) {
-                    //System.out.println("INSERTED: [" + newNode.getNodeData().getLabel() + "]");
-                }
 
-                insertStreak.add(newNode);
+                /* ───── INSERT ONLY ─────────────────────────────────────────── */
+            } else if (newIdx >= 0) {
+                insertStreak.add(newNodes.get(newIdx));
 
                 if (!deleteStreak.isEmpty()) {
-                    handleDeletedSubtree(deleteStreak, operations, relabeledNodes);
+                    handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
-
             }
         }
+        if (!deleteStreak.isEmpty())
+            handleDeletedSubtree(deleteStreak, raw, relabeled);
+        if (!insertStreak.isEmpty())
+            handleInsertedSubtree(insertStreak, raw);
 
-        if (!deleteStreak.isEmpty()) {
-            handleDeletedSubtree(deleteStreak, operations, relabeledNodes);
-            deleteStreak.clear();
+        /* ------------------------------------------------------------------
+         * 2) ENRICH every operation with method name + uniform context
+         * ------------------------------------------------------------------ */
+        List<EditOperation> enriched = new ArrayList<>(raw.size());
+
+        for (EditOperation op : raw) {
+            TreeNode anchor = switch (op.type()) {
+                case RELABEL -> lca(op.fromNode(), op.toNode());
+                case DELETE  -> op.fromNode() != null ? op.fromNode().getParent() : null;
+                case INSERT  -> op.toNode()   != null ? op.toNode()  .getParent() : null;
+            };
+
+            // safety fallback
+            if (anchor == null) anchor = (op.fromNode() != null ? op.fromNode()
+                    : op.toNode());
+
+            Path source = (op.type() == EditOperation.Type.INSERT) ? newFile : oldFile;
+            List<String> ctx = context(source, anchor, CONTEXT_MARGIN);
+
+            enriched.add(new EditOperation(
+                    op.type(), op.fromNode(), op.toNode(), methodName, ctx));
         }
 
-        if (!insertStreak.isEmpty()) {
-            handleInsertedSubtree(insertStreak, operations);
-            insertStreak.clear();
-        }
-
-        return operations;
+        return enriched;
     }
+
 
     private static void handleInsertedSubtree(List<MappedNode> insertedNodes, List<EditOperation> operations) {
         if (insertedNodes.isEmpty()) return;
@@ -513,6 +534,71 @@ public class TreeComparator {
         return cnt;
     }
 
+    /* ───────── Lowest Common Ancestor for two TreeNodes ───────── */
+    private static TreeNode lca(TreeNode a, TreeNode b) {
+        Set<TreeNode> path = new HashSet<>();
+        for (TreeNode n = a; n != null; n = n.getParent()) path.add(n);
+        for (TreeNode n = b; n != null; n = n.getParent())
+            if (path.contains(n)) return n;
+        return null;                 // should never happen
+    }
+
+    /* ───────── Extract context lines from a file ───────── */
+    private static List<String> context(Path file,
+                                        TreeNode anchor,
+                                        int margin) throws IOException {
+        List<String> all = Files.readAllLines(file);
+        int from = Math.max(0, anchor.getStartLine() - 1 - margin);
+        int to   = Math.min(all.size(), anchor.getEndLine() + margin);
+        List<String> out = new ArrayList<>();
+        for (int i = from; i < to; i++) {
+            out.add(String.format("%5d %s", i + 1, all.get(i)));
+        }
+        return out;
+    }
+
+    private static String extractName(String oldFilePath, String newFilePath) {
+        if (oldFilePath == null || newFilePath == null) {
+            return "Both file paths must be provided.";
+        }
+
+        // Normalize slashes
+        oldFilePath = oldFilePath.replace("\\", "/");
+        newFilePath = newFilePath.replace("\\", "/");
+
+        // Find common suffix
+        String suffix = commonSuffix(oldFilePath, newFilePath);
+
+        // If suffix starts with extension only (like ".java"), it's not a real file name
+        if (suffix.startsWith(".") || !suffix.contains("_")) {
+            return oldFilePath + " -> " + newFilePath;
+        }
+
+        // Remove leading "_" if exists, then replace underscores with slashes
+        if (suffix.startsWith("_")) {
+            suffix = suffix.substring(1); // remove leading "_"
+        }
+
+        // Convert encoded path to actual file path
+        String formattedPath = suffix.replace('_', '/');
+
+        return formattedPath;
+    }
+
+    // Helper method to get the common suffix
+    private static String commonSuffix(String a, String b) {
+        if (a == null || b == null) return "";
+
+        int aLen = a.length();
+        int bLen = b.length();
+        int i = 0;
+
+        while (i < aLen && i < bLen && a.charAt(aLen - 1 - i) == b.charAt(bLen - 1 - i)) {
+            i++;
+        }
+
+        return a.substring(aLen - i);
+    }
 
 
 }
