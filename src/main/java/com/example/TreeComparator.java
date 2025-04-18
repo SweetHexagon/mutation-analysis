@@ -12,9 +12,7 @@ import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
 import eu.mihosoft.ext.apted.distance.APTED;
 import eu.mihosoft.ext.apted.node.Node;
 import eu.mihosoft.ext.apted.node.StringNodeData;
-import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.TerminalNode;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +27,11 @@ import java.util.*;
 
 public class TreeComparator {
 
-    private static final int CONTEXT_MARGIN = 0;
+
+    private static final boolean SHOW_DEEP_CONTEXT = false;
+
+    private static final int CONTEXT_MARGIN = SHOW_DEEP_CONTEXT ? 0 : 1;
+
 
     private static final Logger log = LoggerFactory.getLogger(TreeComparator.class);
 
@@ -67,8 +69,6 @@ public class TreeComparator {
         String fileName = extractName(oldFilePath,newFilePath);
         return compareFiles(oldFilePath, newFilePath, fileName, null, null, debug);
     }
-
-
 
     private static FileResult compareFiles(
             String oldFilePath,
@@ -172,7 +172,7 @@ public class TreeComparator {
         // 4) BUILD RESULT
         sw.start();
         HashMap<Metrics,Integer> metrics = new HashMap<>();
-        metrics.put(Metrics.TED, totalCost);
+        metrics.put(Metrics.TREE_EDIT_DISTANCE, totalCost);
         FileResult result = createFileResult(
                 fileName, oldFilePath, newFilePath,
                 allOps, metrics,
@@ -185,10 +185,13 @@ public class TreeComparator {
         return result;
     }
 
+//----
 
+// (Add this to the existing FileComparator class)
 
     private static FileResult createFileResult(String fileName, String original, String changed,
-                                               List<EditOperation> ops, HashMap<Metrics, Integer> metrics, String oldCommit, String newCommit) {
+                                               List<EditOperation> ops, HashMap<Metrics, Integer> metrics,
+                                               String oldCommit, String newCommit) {
         return FileResult.builder()
                 .name(fileName)
                 .editOperations(ops)
@@ -198,7 +201,6 @@ public class TreeComparator {
                 .build();
     }
 
-
     private static void printDebugInfo(MappedNode oldTree, MappedNode newTree, int cost,
                                        APTED<StringUnitCostModel, StringNodeData> apted) {
         System.out.println("APTed Old Tree: " + oldTree);
@@ -206,47 +208,34 @@ public class TreeComparator {
         System.out.println("Edit Distance Cost: " + cost);
     }
 
-    /**
-     * Builds the list of EditOperation objects for one method, then
-     * enriches each operation with uniform context lines.
-     */
-    private static List<EditOperation> getOperations(
-            MappedNode oldTree,
-            MappedNode newTree,
-            APTED<StringUnitCostModel, StringNodeData> apted,
-            Path oldFile,
-            Path newFile,
-            String methodName,
-            boolean debug) throws IOException {
+    private static List<EditOperation> getOperations(MappedNode oldTree,
+                                                     MappedNode newTree,
+                                                     APTED<StringUnitCostModel, StringNodeData> apted,
+                                                     Path oldFile,
+                                                     Path newFile,
+                                                     String methodName,
+                                                     boolean debug) throws IOException {
 
-        /* ------------------------------------------------------------------
-         * 1) ORIGINAL LOGIC – produce the 'raw' list the same way as before
-         * ------------------------------------------------------------------ */
         List<EditOperation> raw = new ArrayList<>();
-
         List<int[]> mappingPairs = apted.computeEditMapping();
         List<MappedNode> oldNodes = getPostOrder(oldTree);
         List<MappedNode> newNodes = getPostOrder(newTree);
 
         List<MappedNode> deleteStreak = new ArrayList<>();
         List<MappedNode> insertStreak = new ArrayList<>();
-        Set<MappedNode>  relabeled    = new HashSet<>();
+        Set<MappedNode> relabeled = new HashSet<>();
 
         for (int[] p : mappingPairs) {
             int oldIdx = p[0] - 1, newIdx = p[1] - 1;
 
-            /* ───── MATCH / RELABEL ─────────────────────────────────────── */
             if (oldIdx >= 0 && newIdx >= 0) {
                 MappedNode o = oldNodes.get(oldIdx);
                 MappedNode n = newNodes.get(newIdx);
 
-                if (!Objects.equals(o.getNodeData().getLabel(),
-                        n.getNodeData().getLabel())) {
-
+                if (!Objects.equals(o.getNodeData().getLabel(), n.getNodeData().getLabel())) {
                     TreeNode from = o.toTreeNode();
-                    TreeNode to   = n.toTreeNode();
+                    TreeNode to = n.toTreeNode();
 
-                    /* remove nested relabels */
                     raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL
                             && isDescendant(op.fromNode(), from));
 
@@ -254,7 +243,7 @@ public class TreeComparator {
                     raw.add(new EditOperation(EditOperation.Type.RELABEL, from, to));
                 }
 
-                if (!deleteStreak.isEmpty()) {        // flush streaks
+                if (!deleteStreak.isEmpty()) {
                     handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
@@ -263,7 +252,6 @@ public class TreeComparator {
                     insertStreak.clear();
                 }
 
-                /* ───── DELETE ONLY ─────────────────────────────────────────── */
             } else if (oldIdx >= 0) {
                 deleteStreak.add(oldNodes.get(oldIdx));
 
@@ -272,7 +260,6 @@ public class TreeComparator {
                     insertStreak.clear();
                 }
 
-                /* ───── INSERT ONLY ─────────────────────────────────────────── */
             } else if (newIdx >= 0) {
                 insertStreak.add(newNodes.get(newIdx));
 
@@ -282,26 +269,24 @@ public class TreeComparator {
                 }
             }
         }
-        if (!deleteStreak.isEmpty())
-            handleDeletedSubtree(deleteStreak, raw, relabeled);
-        if (!insertStreak.isEmpty())
-            handleInsertedSubtree(insertStreak, raw);
 
-        /* ------------------------------------------------------------------
-         * 2) ENRICH every operation with method name + uniform context
-         * ------------------------------------------------------------------ */
+        if (!deleteStreak.isEmpty()) handleDeletedSubtree(deleteStreak, raw, relabeled);
+        if (!insertStreak.isEmpty()) handleInsertedSubtree(insertStreak, raw);
+
         List<EditOperation> enriched = new ArrayList<>(raw.size());
 
         for (EditOperation op : raw) {
             TreeNode anchor = switch (op.type()) {
                 case RELABEL -> lca(op.fromNode(), op.toNode());
-                case DELETE  -> op.fromNode() != null ? op.fromNode().getParent() : null;
-                case INSERT  -> op.toNode()   != null ? op.toNode()  .getParent() : null;
+                case DELETE -> SHOW_DEEP_CONTEXT
+                        ? op.fromNode() != null ? op.fromNode().getParent() : null
+                        : op.fromNode();
+                case INSERT -> SHOW_DEEP_CONTEXT
+                        ? op.toNode() != null ? op.toNode().getParent() : null
+                        : op.toNode();
             };
 
-            // safety fallback
-            if (anchor == null) anchor = (op.fromNode() != null ? op.fromNode()
-                    : op.toNode());
+            if (anchor == null) anchor = (op.fromNode() != null ? op.fromNode() : op.toNode());
 
             Path source = (op.type() == EditOperation.Type.INSERT) ? newFile : oldFile;
             List<String> ctx = context(source, anchor, CONTEXT_MARGIN);
@@ -313,8 +298,8 @@ public class TreeComparator {
         return enriched;
     }
 
-
-    private static void handleInsertedSubtree(List<MappedNode> insertedNodes, List<EditOperation> operations) {
+    private static void handleInsertedSubtree(List<MappedNode> insertedNodes,
+                                              List<EditOperation> operations) {
         if (insertedNodes.isEmpty()) return;
 
         Set<MappedNode> insertedSet = new HashSet<>(insertedNodes);
@@ -323,7 +308,6 @@ public class TreeComparator {
         for (MappedNode insertedRoot : topLevelInsertions) {
             MappedNode maybeParent = insertedRoot.getParent();
             if (maybeParent != null && allChildrenInserted(maybeParent, insertedSet)) {
-                // Promote relabeled parent as insertion root
                 insertedRoot = maybeParent;
             }
 
@@ -335,7 +319,8 @@ public class TreeComparator {
         }
     }
 
-    private static List<MappedNode> filterInsertionRoots(List<MappedNode> insertedNodes, Set<MappedNode> insertedSet) {
+    private static List<MappedNode> filterInsertionRoots(List<MappedNode> insertedNodes,
+                                                         Set<MappedNode> insertedSet) {
         List<MappedNode> roots = new ArrayList<>();
 
         for (MappedNode node : insertedNodes) {
@@ -358,7 +343,8 @@ public class TreeComparator {
         return roots;
     }
 
-    private static MappedNode findFirstNonInsertedDescendant(MappedNode root, Set<MappedNode> insertedSet) {
+    private static MappedNode findFirstNonInsertedDescendant(MappedNode root,
+                                                             Set<MappedNode> insertedSet) {
         Queue<MappedNode> queue = new LinkedList<>();
         queue.add(root);
 
@@ -437,6 +423,8 @@ public class TreeComparator {
         return roots;
     }
 
+    // (Add this to the existing FileComparator class)
+
     private static boolean allChildrenDeleted(MappedNode parent, Set<MappedNode> deletedSet) {
         for (Node<StringNodeData> child : parent.getChildren()) {
             if (!deletedSet.contains((MappedNode) child)) {
@@ -454,7 +442,6 @@ public class TreeComparator {
         }
         return true;
     }
-
 
     private static MappedNode findFirstNonDeletedDescendant(MappedNode root, Set<MappedNode> deletedSet) {
         Queue<MappedNode> queue = new LinkedList<>();
@@ -511,39 +498,75 @@ public class TreeComparator {
     }
 
     private static String extractMethodName(ParseTree tree, LanguageParser parser) {
-        if (parser instanceof JavaParserImpl && tree instanceof Java20Parser.MethodDeclarationContext) {
-            Java20Parser.MethodDeclarationContext ctx = (Java20Parser.MethodDeclarationContext) tree;
-            return ctx.methodHeader().methodDeclarator().identifier().getText();
-
-        } else if (parser instanceof CParserImpl && tree instanceof CParser.FunctionDefinitionContext) {
-            CParser.FunctionDefinitionContext ctx = (CParser.FunctionDefinitionContext) tree;
-            return ctx.declarator().directDeclarator().directDeclarator().getText();
-
+        if (parser instanceof JavaParserImpl) {
+            return javaMethodName(tree);
         }
-        // Add more parser-specific extraction logic here if needed.
 
-        throw new UnsupportedOperationException("Unsupported parser type or context: " + parser.getClass().getSimpleName());
+        if (parser instanceof CParserImpl
+                && tree instanceof CParser.FunctionDefinitionContext) {
+            return cMethodName((CParser.FunctionDefinitionContext) tree);
+        }
+
+        throw new UnsupportedOperationException(
+                "Unsupported parser/context combo: " + parser.getClass().getSimpleName());
+    }
+
+    private static String javaMethodName(ParseTree node) {
+        if (node instanceof Java20Parser.MethodDeclarationContext m) {
+            return m.methodHeader()
+                    .methodDeclarator()
+                    .identifier()
+                    .getText();
+        }
+
+        if (node instanceof Java20Parser.ConstructorDeclarationContext c) {
+            try {
+                return c.constructorDeclarator()
+                        .simpleTypeName()
+                        .typeIdentifier()
+                        .Identifier()
+                        .getText();
+            } catch (Exception ignored) {}
+            return "<constructor>";
+        }
+
+        if (node instanceof Java20Parser.CompactConstructorDeclarationContext cc) {
+            try {
+                return cc.simpleTypeName().typeIdentifier().Identifier().getText();
+            } catch (Exception ignored) {}
+            return "<compact‑ctor>";
+        }
+
+        return "<anonymous>";
+    }
+
+    private static String cMethodName(CParser.FunctionDefinitionContext ctx) {
+        CParser.DirectDeclaratorContext dd = ctx.declarator().directDeclarator();
+        while (dd != null && dd.directDeclarator() != null) {
+            dd = dd.directDeclarator();
+        }
+        return (dd != null && dd.Identifier() != null)
+                ? dd.Identifier().getText()
+                : "<anonymous>";
     }
 
     private static int countParseTreeNodes(ParseTree t) {
         if (t == null) return 0;
-        int cnt = 1;                    // count this node
+        int cnt = 1;
         for (int i = 0; i < t.getChildCount(); i++) {
             cnt += countParseTreeNodes(t.getChild(i));
         }
         return cnt;
     }
 
-    /* ───────── Lowest Common Ancestor for two TreeNodes ───────── */
     private static TreeNode lca(TreeNode a, TreeNode b) {
         Set<TreeNode> path = new HashSet<>();
         for (TreeNode n = a; n != null; n = n.getParent()) path.add(n);
         for (TreeNode n = b; n != null; n = n.getParent())
             if (path.contains(n)) return n;
-        return null;                 // should never happen
+        return null;
     }
 
-    /* ───────── Extract context lines from a file ───────── */
     private static List<String> context(Path file,
                                         TreeNode anchor,
                                         int margin) throws IOException {
@@ -562,30 +585,24 @@ public class TreeComparator {
             return "Both file paths must be provided.";
         }
 
-        // Normalize slashes
         oldFilePath = oldFilePath.replace("\\", "/");
         newFilePath = newFilePath.replace("\\", "/");
 
-        // Find common suffix
         String suffix = commonSuffix(oldFilePath, newFilePath);
 
-        // If suffix starts with extension only (like ".java"), it's not a real file name
         if (suffix.startsWith(".") || !suffix.contains("_")) {
             return oldFilePath + " -> " + newFilePath;
         }
 
-        // Remove leading "_" if exists, then replace underscores with slashes
         if (suffix.startsWith("_")) {
-            suffix = suffix.substring(1); // remove leading "_"
+            suffix = suffix.substring(1);
         }
 
-        // Convert encoded path to actual file path
         String formattedPath = suffix.replace('_', '/');
 
         return formattedPath;
     }
 
-    // Helper method to get the common suffix
     private static String commonSuffix(String a, String b) {
         if (a == null || b == null) return "";
 
@@ -599,6 +616,7 @@ public class TreeComparator {
 
         return a.substring(aLen - i);
     }
+
 
 
 }

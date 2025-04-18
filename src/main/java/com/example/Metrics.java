@@ -1,5 +1,5 @@
 package com.example;
 
 public enum Metrics {
-    TED
+    TREE_EDIT_DISTANCE
 }

@@ -5,8 +5,6 @@ import com.example.pojo.FileResult;
 import com.example.pojo.RepoResult;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.commons.io.FileUtils;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -21,8 +19,8 @@ import java.util.List;
 
 public class Main {
     static String localPath = "repo";
-    static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
-    //static String repoUrl = "https://github.com/bartobri/no-more-secrets";
+    //static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
+    static String repoUrl = "https://github.com/bartobri/no-more-secrets";
     //static String repoUrl = "https://github.com/cfenollosa/os-tutorial";
     //static String repoUrl = "https://github.com/apache/commons-lang";
 
@@ -70,14 +68,14 @@ public class Main {
 
                 if (
                         result != null &&
-                                result.getMetrics().get(Metrics.TED) > 0 &&
-                                result.getMetrics().get(Metrics.TED) < 15
+                                result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE) > 0 &&
+                                result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE) < 15
                 ) {
                     potentialMutants.add(result);
                 } else {
                     if (debug) {
                         if (result != null) {
-                            System.out.println("Tree Edit distance: " + result.getMetrics().get(Metrics.TED));
+                            System.out.println("Tree Edit distance: " + result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE));
                         } else {
                             System.out.println("Cant retrieve TED");
                         }

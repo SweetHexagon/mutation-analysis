@@ -70,11 +70,11 @@ public class TreeUtils {
             }
         }
 
-    /* set end‑line = last (non‑null) child’s end line,
+    /* set end‑line = last (non‑null) child’s end line, uncomment it if you want more info
        fallback to ctx.getStop() when there are no children               */
         if (!node.getChildren().isEmpty()) {
             int lastLine = node.getChildren()
-                    .get(node.getChildren().size() - 1)
+                    .getLast()
                     .getEndLine();
             node.setEndLine(lastLine);
         } else {
