@@ -7,8 +7,6 @@ import com.example.dto.FileResultDto;
 import com.example.dto.RepoResultDto;
 import com.example.pojo.FileResult;
 import com.example.pojo.RepoResult;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,15 +22,19 @@ public class ResultMapper {
                 .build();
     }
 
-
     private static String getTextSafe(TreeNode node) {
-        if (node == null) return "null";
-        if (node.getTokens() != null && node.parseTreeOriginalNode instanceof ParserRuleContext ctx) {
-            return node.getTokens().getText(ctx);
+        if (node == null) {
+            return "null";
+        }
+        if (node.getAstNode() != null) {
+            try {
+                return node.getAstNode().toString().trim();
+            } catch (Exception e) {
+                return node.getLabel();
+            }
         }
         return node.getLabel();
     }
-
 
     public static FileResultDto toDto(FileResult fileResult) {
         return FileResultDto.builder()

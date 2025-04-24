@@ -1,71 +1,51 @@
 package com.example;
 
+import com.github.javaparser.ast.Node;
+
 import lombok.Getter;
 import lombok.Setter;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.tree.ParseTree;
 import java.util.ArrayList;
 import java.util.List;
 
 @Getter @Setter
 public class TreeNode {
-    public String label;
-    public List<TreeNode> children = new ArrayList<>();
-    public ParseTree parseTreeOriginalNode;
-    public TreeNode parent;
-    public int postorderIndex;
-    public int leftBoundaryIndex;
-    public int depth;
-    public CommonTokenStream tokens;
+    private final String label;
+    private final Node astNode;
+    private final List<TreeNode> children = new ArrayList<>();
+    private TreeNode parent;
+    private int postorderIndex;
+    private int depth;
     private int startLine;
     private int endLine;
 
-
-    public TreeNode(String label, ParseTree parseTreeOriginalNode, int depth, int startLine) {
+    public TreeNode(String label, Node astNode, int depth, int startLine) {
         this.label = label;
-        this.parseTreeOriginalNode = parseTreeOriginalNode;
+        this.astNode = astNode;
         this.depth = depth;
         this.startLine = startLine;
         this.endLine = startLine;
     }
 
-    public TreeNode(String label, ParseTree pt, int depth) {
-        this(label, pt, depth, -1);
-    }
-
     public void addChild(TreeNode child) {
         child.parent = this;
         children.add(child);
+        // keep endLine up to date
+        //this.endLine = Math.max(this.endLine, child.endLine);
     }
 
     public boolean isLeaf() {
         return children.isEmpty();
     }
 
-    public int size() {
-        int total = 1;
-        for (TreeNode child : children) {
-            total += child.size();
-        }
-        return total;
-    }
-
     @Override
     public String toString() {
-        return toStringHelper(this);
-    }
-
-    private String toStringHelper(TreeNode node) {
-        if (node.getChildren().isEmpty()) {
-            return "( \"" + node.getLabel() + "\" )";
+        if (children.isEmpty()) {
+            return "(\"" + label + "\")";
         }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("( \"").append(node.getLabel()).append("\" ");
-        for (TreeNode child : node.getChildren()) {
-            sb.append(toStringHelper(child)).append(" ");
+        var sb = new StringBuilder("(\"" + label + "\"");
+        for (var c : children) {
+            sb.append(" ").append(c.toString());
         }
-        sb.setLength(sb.length() - 1);
         sb.append(")");
         return sb.toString();
     }

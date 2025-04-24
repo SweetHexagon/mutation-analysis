@@ -1,6 +1,5 @@
 plugins {
     id("java")
-    id("antlr")
     id("application")
 }
 
@@ -31,9 +30,8 @@ dependencies {
     // Json output
     implementation("com.google.code.gson:gson:2.13.0")
 
-    // ANTLR parser
-    antlr("org.antlr:antlr4:4.13.2")
-    implementation("org.antlr:antlr4-runtime:4.13.2")
+    //JavaParser
+    implementation("com.github.javaparser:javaparser-core:3.25.4")
 
     // IO
     implementation("commons-io:commons-io:2.18.0")
@@ -54,12 +52,6 @@ dependencies {
     // Testing
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-}
-
-tasks.generateGrammarSource {
-    version = "4.13.2"
-    arguments = listOf("-visitor", "-listener")
-    outputDirectory = file("build/generated-src/antlr/main")
 }
 
 sourceSets["main"].java {

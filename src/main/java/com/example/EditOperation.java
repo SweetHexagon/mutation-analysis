@@ -1,10 +1,14 @@
 package com.example;
 
-import org.antlr.v4.runtime.ParserRuleContext;
-
 import java.util.List;
 
-public record EditOperation(EditOperation.Type type, TreeNode fromNode, TreeNode toNode, String method, List<String> context) {
+public record EditOperation(
+        EditOperation.Type type,
+        TreeNode fromNode,
+        TreeNode toNode,
+        String method,
+        List<String> context
+) {
 
     public enum Type {INSERT, DELETE, RELABEL}
 
@@ -27,17 +31,18 @@ public record EditOperation(EditOperation.Type type, TreeNode fromNode, TreeNode
         sb.append("  (in ").append(method).append(')').append(System.lineSeparator());
 
         if (context != null && !context.isEmpty()) {
-            for (String line : context) sb.append("    ").append(line).append(System.lineSeparator());
+            for (String line : context) {
+                sb.append("    ").append(line).append(System.lineSeparator());
+            }
         }
         return sb.toString();
     }
 
     private static String safeNodeText(TreeNode node) {
         if (node == null) return "null (node)";
-        if (node.parseTreeOriginalNode == null) return "null (no tree)";
-        if (node.getTokens() != null && node.parseTreeOriginalNode instanceof ParserRuleContext ctx) {
+        if (node.getAstNode() != null) {
             try {
-                return node.getTokens().getText(ctx).trim();
+                return node.getAstNode().toString().trim();
             } catch (Exception e) {
                 return "error extracting text";
             }

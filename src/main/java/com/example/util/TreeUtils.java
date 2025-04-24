@@ -2,87 +2,69 @@ package com.example.util;
 
 import com.example.MappedNode;
 import com.example.TreeNode;
+import com.github.javaparser.ast.Node;
 import lombok.Getter;
 import lombok.Setter;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.TerminalNode;
+
+import java.util.List;
 
 @Getter @Setter
 public class TreeUtils {
-    public static TreeNode convert(ParseTree parseTree, CommonTokenStream tokens) {
-        return convertHelper(parseTree, 0, tokens);
+
+    /**
+     * Converts a JavaParser AST node into our TreeNode structure.
+     * @param astNode the JavaParser AST node
+     * @param depth   current tree depth (start with 0)
+     * @return a TreeNode representing the AST subtree, or null if skipped
+     */
+    public static TreeNode convert(Node astNode, int depth) {
+        return convertHelper(astNode, depth);
     }
 
-    private static TreeNode convertHelper(ParseTree parseTree,
-                                          int depth,
-                                          CommonTokenStream tokens) {
+    private static TreeNode convertHelper(Node astNode, int depth) {
+        if (astNode == null) return null;
 
-        /* ────────────────────────── TERMINAL ─────────────────────────── */
-        if (parseTree instanceof TerminalNode term) {
-            String text = term.getText();
-            if (text.matches("[;(){}\\[\\]]")) {        // trivial punctuation
-                return null;
+        // Determine start/end lines from node range
+        int startLine = astNode.getRange()
+                .map(r -> r.begin.line)
+                .orElse(-1);
+        int endLine = astNode.getRange()
+                .map(r -> r.end.line)
+                .orElse(startLine);
+
+        // Visit children
+        List<Node> children = astNode.getChildNodes();
+
+        // Determine label: leaf or non-leaf
+        String label;
+        if (children.isEmpty()) {
+            String text = astNode.toString().trim();
+            if (text.isEmpty()) {
+                return null; // skip empty leaves
             }
-            int line = term.getSymbol().getLine();
-            TreeNode leaf = new TreeNode(text, parseTree, depth, line);
-            leaf.setEndLine(line);                      // same line for terminals
-            leaf.setTokens(tokens);
-            return leaf;
-        }
-
-        /* ───── COLLAPSE CHAINS OF SINGLE NON‑TERMINAL CHILDREN ──────── */
-        int skipped = 0;
-        while (parseTree.getChildCount() == 1 &&
-                !(parseTree.getChild(0) instanceof TerminalNode)) {
-            parseTree = parseTree.getChild(0);
-            skipped++;
-        }
-        int curDepth = depth + skipped;
-
-        /* ───── CASE: SINGLE CHILD THAT *IS* TERMINAL ─────────────────── */
-        if (parseTree.getChildCount() == 1 &&
-                parseTree.getChild(0) instanceof TerminalNode t) {
-            String text = t.getText();
-            if (text.matches("[;(){}\\[\\]]")) {
-                return null;
-            }
-            int line = t.getSymbol().getLine();
-            TreeNode leaf = new TreeNode(text, parseTree, curDepth + 1, line);
-            leaf.setEndLine(line);
-            leaf.setTokens(tokens);
-            return leaf;
-        }
-
-        /* ─────────────────────── NON‑TERMINAL NODE ───────────────────── */
-        ParserRuleContext ctx = (ParserRuleContext) parseTree;
-        String label   = parseTree.getClass().getSimpleName().replace("Context", "");
-        int startLine  = ctx.getStart().getLine();        // first token line
-
-        TreeNode node  = new TreeNode(label, parseTree, curDepth, startLine);
-        node.setTokens(tokens);
-
-        for (int i = 0; i < parseTree.getChildCount(); i++) {
-            TreeNode child = convertHelper(parseTree.getChild(i), curDepth + 1, tokens);
-            if (child != null) {
-                node.addChild(child);
-            }
-        }
-
-    /* set end‑line = last (non‑null) child’s end line, uncomment it if you want more info
-       fallback to ctx.getStop() when there are no children               */
-        if (!node.getChildren().isEmpty()) {
-            int lastLine = node.getChildren()
-                    .getLast()
-                    .getEndLine();
-            node.setEndLine(lastLine);
+            label = text;
         } else {
-            node.setEndLine(ctx.getStop().getLine());
+            label = astNode.getClass().getSimpleName();
         }
+
+        // Build TreeNode
+        TreeNode node = new TreeNode(label, astNode, depth, startLine);
+        node.setEndLine(endLine);
+
+        // Recurse on children
+        for (Node childAst : children) {
+            TreeNode childNode = convertHelper(childAst, depth + 1);
+            if (childNode != null) {
+                node.addChild(childNode);
+            }
+        }
+
         return node;
     }
 
+    /**
+     * Wraps our TreeNode into a MappedNode for APTED.
+     */
     public static MappedNode convertToApted(TreeNode treeNode, MappedNode parentNode) {
         MappedNode node = new MappedNode(treeNode.getLabel(), treeNode, parentNode);
         for (TreeNode child : treeNode.getChildren()) {
@@ -91,9 +73,11 @@ public class TreeUtils {
         return node;
     }
 
+    /**
+     * Placeholder for an empty AST.
+     */
     public static MappedNode emptyMappedPlaceholder() {
-        // Create a TreeNode with no real parseTree and no children
-        TreeNode empty = new TreeNode("EMPTY", null, 0);
+        TreeNode empty = new TreeNode("EMPTY", null, 0, -1);
         return convertToApted(empty, null);
     }
 }

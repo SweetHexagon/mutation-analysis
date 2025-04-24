@@ -5,9 +5,7 @@ import com.example.pojo.FileResult;
 import com.example.pojo.RepoResult;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
-import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.commons.io.FileUtils;
-import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.io.File;
 import java.io.IOException;
@@ -194,20 +192,6 @@ public class Main {
         }
     }
 
-    public static void printTokens(ParseTree tree) {
-        printTokensHelper(tree);
-        System.out.println();
-    }
-
-    public static void printTokensHelper(ParseTree tree) {
-        if (tree instanceof TerminalNode) {
-            System.out.print(tree.getText() + " ");
-        } else {
-            for (int i = 0; i < tree.getChildCount(); i++) {
-                printTokensHelper(tree.getChild(i));
-            }
-        }
-    }
 
     public static void cleanUp(String path) {
         try {
