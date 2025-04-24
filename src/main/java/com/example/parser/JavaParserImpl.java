@@ -4,6 +4,8 @@ import com.example.javaparser.Java20Lexer;
 import com.example.javaparser.Java20Parser;
 import lombok.Getter;
 import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.atn.PredictionMode;
+import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.io.IOException;
@@ -27,7 +29,18 @@ public class JavaParserImpl implements LanguageParser {
 
             disableErrorListeners();
 
-            return parser.compilationUnit();
+            parser.getInterpreter().setPredictionMode(PredictionMode.SLL);
+            parser.setErrorHandler(new BailErrorStrategy());
+
+            try {
+                return parser.compilationUnit();
+            } catch (ParseCancellationException ex) {
+                parser.reset();
+                parser.getInterpreter().setPredictionMode(PredictionMode.LL);
+                parser.setErrorHandler(new DefaultErrorStrategy());
+                return parser.compilationUnit();
+            }
+
         } catch (Exception e) {
             System.err.println("Error reading file: " + filePath);
             return null;
@@ -61,6 +74,11 @@ public class JavaParserImpl implements LanguageParser {
                 }
             });
         }
+    }
+
+    @Override
+    public Parser getAntlrParser() {
+        return parser;
     }
 }
 

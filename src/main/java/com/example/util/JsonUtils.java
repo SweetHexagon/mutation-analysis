@@ -30,5 +30,23 @@ public class JsonUtils {
             System.out.println("Error writing to file: " + e.getMessage());
         }
     }
+
+    public static String generateComparisonFileName(String repoUrl) {
+        if (repoUrl == null || !repoUrl.startsWith("https://github.com/")) {
+            throw new IllegalArgumentException("Invalid GitHub URL");
+        }
+
+        String[] parts = repoUrl.replace("https://github.com/", "").split("/");
+
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("URL does not contain both owner and repository name");
+       }
+
+        String owner = parts[0];
+        String repo = parts[1];
+        repo = repo.replace(".git", "");
+        return "comparison_" + owner + "_" + repo + ".json";
+    }
+
 }
 

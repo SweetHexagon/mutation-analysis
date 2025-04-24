@@ -6,6 +6,8 @@ import com.example.javaparser.Java20Lexer;
 import com.example.javaparser.Java20Parser;
 import lombok.Getter;
 import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.atn.PredictionMode;
+import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.io.IOException;
@@ -29,7 +31,18 @@ public class CParserImpl implements LanguageParser {
 
             disableErrorListeners();
 
-            return parser.compilationUnit();
+            parser.getInterpreter().setPredictionMode(PredictionMode.SLL);
+            parser.setErrorHandler(new BailErrorStrategy());
+
+            try {
+                return parser.compilationUnit();
+            } catch (ParseCancellationException ex) {
+                parser.reset();
+                parser.getInterpreter().setPredictionMode(PredictionMode.LL);
+                parser.setErrorHandler(new DefaultErrorStrategy());
+                return parser.compilationUnit();
+            }
+
         } catch (IOException e) {
             System.err.println("Błąd odczytu pliku: " + filePath);
             return null;
@@ -63,6 +76,11 @@ public class CParserImpl implements LanguageParser {
                 }
             });
         }
+    }
+
+    @Override
+    public Parser getAntlrParser() {
+        return parser;
     }
 }
 

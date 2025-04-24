@@ -15,88 +15,143 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.*;
 
 public class Main {
-    static String localPath = "repo";
-    //static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
-    static String repoUrl = "https://github.com/bartobri/no-more-secrets";
-    //static String repoUrl = "https://github.com/cfenollosa/os-tutorial";
+    static String localPath = "repositories";
+    private static final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
+    //C files: static String repoUrl = "https://github.com/JakGad/synthetic_mutations";
     //static String repoUrl = "https://github.com/apache/commons-lang";
 
-    static List<String> extensions = List.of(".c", ".java");
+    static List<String> repoUrls = List.of(
+            //"https://github.com/Snailclimb/JavaGuide",
+            //"https://github.com/krahets/hello-algo",
+            //"https://github.com/iluwatar/java-design-patterns",
+            //"https://github.com/macrozheng/mall",
+            //"https://github.com/doocs/advanced-java",
+            //"https://github.com/spring-projects/spring-boot",
+            //"https://github.com/MisterBooo/LeetCodeAnimation",
+            "https://github.com/elastic/elasticsearch",
+            "https://github.com/kdn251/interviews",
+            "https://github.com/TheAlgorithms/Java",
+            "https://github.com/spring-projects/spring-framework",
+            "https://github.com/NationalSecurityAgency/ghidra",
+            "https://github.com/Stirling-Tools/Stirling-PDF",
+            "https://github.com/google/guava",
+            "https://github.com/ReactiveX/RxJava",
+            "https://github.com/skylot/jadx",
+            "https://github.com/dbeaver/dbeaver",
+            "https://github.com/jeecgboot/JeecgBoot",
+            "https://github.com/apache/dubbo",
+            "https://github.com/termux/termux-app"
+    );
 
-    public static void main(String[] args) {
-        //cleanUp();
 
-        //test();
+    static List<String> extensions = List.of(
+            //".c",
+            ".java");
 
-        presentation();
+    public static void main(String[] args) throws InterruptedException {
+        //cleanUp(localPath);
+
+        test();
+
+        //presentation(repoUrls);
 
     }
 
-    public static void presentation() {
-
-        boolean debug = false;
-
+    public static void presentation(List<String> repoUrls) throws InterruptedException {
         cleanUp(localPath);
 
-        List<CommitPairWithFiles> commitPairs = GitUtils.processRepo(repoUrl, localPath, extensions, false);
+        for (String repoUrl : repoUrls) {
+            String repoName = repoUrl.substring(repoUrl.lastIndexOf("/") + 1);
+            String repoDir  = localPath + File.separator + repoName;
 
-        if (commitPairs.isEmpty()) {
-            System.out.println("No commit pairs with small changes found or lack of files with appropriate extensions.");
-            return;
-        }
+            List<CommitPairWithFiles> commitPairs;
 
-        List<FileResult> potentialMutants = new ArrayList<>();
+            try {
+                commitPairs = GitUtils.processRepo(repoUrl, repoDir, extensions, false);
+            } catch (Exception e) {
+                System.err.println("Error processing " + repoUrl + ": " + e.getMessage());
+                continue;
+            }
 
-        int totalPairs = commitPairs.size();
-        int currentPair = 1;
+            if (commitPairs == null || commitPairs.isEmpty()) {
+                System.out.println("No commits for " + repoUrl);
+                continue;
+            }
 
-        for (CommitPairWithFiles pair : commitPairs) {
-            System.out.println("analyzing " + currentPair + "/" + totalPairs + " commit pair");
+            // thread-safe collector
+            List<FileResult> potentialMutants = Collections.synchronizedList(new ArrayList<>());
 
-            for (String file : pair.changedFiles()) {
+            ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
+            CompletionService<Void> cs = new ExecutorCompletionService<>(exec);
 
-                var result = TreeComparator.compareFileInTwoCommits(
-                        localPath,
-                        pair.oldCommit(),
-                        pair.newCommit(),
-                        file,
-                        false
-                );
-
-                if (
-                        result != null &&
-                                result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE) > 0 &&
-                                result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE) < 15
-                ) {
-                    potentialMutants.add(result);
-                } else {
-                    if (debug) {
+            final int total = commitPairs.size();
+            System.out.println("Commits to process: " + total);
+            for (int i = 0; i < total; i++) {
+                final int idx = i;
+                final CommitPairWithFiles pair = commitPairs.get(i);
+                cs.submit(() -> {
+                    // each task gets its own parser instances (thanks to the factory change)
+                    for (String file : pair.changedFiles()) {
+                        FileResult result = TreeComparator.compareFileInTwoCommits(
+                                repoDir,
+                                pair.oldCommit(),
+                                pair.newCommit(),
+                                file,
+                                false
+                        );
                         if (result != null) {
-                            System.out.println("Tree Edit distance: " + result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE));
-                        } else {
-                            System.out.println("Cant retrieve TED");
+                            int ted = result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE);
+                            if (ted > 0 && ted < 15) {
+                                potentialMutants.add(result);
+                            }
                         }
                     }
 
-                }
-
+                    // update the progress bar
+                    printProgressBar(idx + 1, total);
+                    return null;
+                });
             }
-            currentPair++;
+
+            // wait for them all
+            for (int i = 0; i < total; i++) {
+                try {
+                    cs.take().get();
+                } catch (ExecutionException ee) {
+                    System.err.println("Task failed: " + ee.getCause());
+                }
+            }
+            exec.shutdown();
+            System.out.println();  // newline after the bar
+
+            // write out JSON
+            RepoResult rr = new RepoResult(repoUrl, potentialMutants);
+            String out = JsonUtils.generateComparisonFileName(repoUrl);
+            JsonUtils.writeJsonToFile(
+                    ResultMapper.toDto(rr),
+                    "src/main/resources/programOutput/" + out
+            );
         }
-        RepoResult repoResult = new RepoResult(repoUrl, potentialMutants);
-
-        JsonUtils.writeJsonToFile(
-                ResultMapper.toDto(repoResult),
-                "src/main/resources/programOutput/repoResult.json"
-        );
-
-
-        System.out.println(repoResult);
-
     }
+
+    private static void printProgressBar(int current, int total) {
+        int width = 50;
+        int filled = (int)(width * current / (double)total);
+        StringBuilder b = new StringBuilder("\r[");
+        for (int i = 0; i < width; i++) {
+            b.append(i < filled ? '=' : ' ');
+        }
+        b.append("] ")
+                .append(String.format("%3d%%", (int)(current*100.0/total)));
+        System.out.print(b);
+        System.out.flush();
+    }
+
 
 
 
@@ -108,8 +163,8 @@ public class Main {
 
         cleanUp(outputDir);
 
-        List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath, relativePath, oldSha, newSha, outputDir);
-        //List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
+        //List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath, relativePath, oldSha, newSha, outputDir);
+        List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
         if (extractedPaths.size() == 2) {
 
             //String oldFilePath = extractedPaths.get(0);

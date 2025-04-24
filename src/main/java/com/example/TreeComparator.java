@@ -44,8 +44,9 @@ public class TreeComparator {
         String oldFilePath = GitUtils.extractFileAtCommit(localPath, oldCommit, fileName);
         String newFilePath = GitUtils.extractFileAtCommit(localPath, newCommit, fileName);
 
-
-        System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+        if (debug){
+            System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+        }
 
 
         if (oldFilePath == null || newFilePath == null) {

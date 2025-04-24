@@ -5,16 +5,22 @@ import java.util.Map;
 
 public class ParserFactory {
 
-    private static final Map<String, LanguageParser> parserRegistry = new HashMap<>();
+    private static final Map<String, Class<? extends LanguageParser>> parserRegistry = new HashMap<>();
 
     static {
-        parserRegistry.put("c", new CParserImpl());
-        parserRegistry.put("java", new JavaParserImpl());
+        parserRegistry.put("c", CParserImpl.class);
+        parserRegistry.put("java", JavaParserImpl.class);
     }
 
     public static LanguageParser getParser(String filePath) {
         String extension = getFileExtension(filePath);
-        return parserRegistry.get(extension);
+        Class<? extends LanguageParser> parserClass = parserRegistry.get(extension);
+        if (parserClass == null) return null;
+        try {
+            return parserClass.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("Cannot create parser for *." + extension, e);
+        }
     }
 
     private static String getFileExtension(String filePath) {
