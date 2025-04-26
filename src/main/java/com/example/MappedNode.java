@@ -7,15 +7,24 @@ import lombok.Setter;
 
 @Getter @Setter
 public class MappedNode extends Node<StringNodeData> {
-    private final TreeNode treeNode;
+    private final com.github.javaparser.ast.Node astNode;
     private final MappedNode parent;
-    public MappedNode(String label, TreeNode treeNode, MappedNode parent) {
-        super(new StringNodeData(label));
-        this.treeNode = treeNode;
-        this.parent = parent;
-    }
+    private int postorderIndex;
+    private int startLine;
+    private int endLine;
 
-    public TreeNode toTreeNode() {
-        return treeNode;
+    public MappedNode(String label, com.github.javaparser.ast.Node astNode, MappedNode parent) {
+        super(new StringNodeData(label));
+        this.astNode = astNode;
+        this.parent = parent;
+
+        if (astNode != null && astNode.getRange().isPresent()) {
+            this.startLine = astNode.getRange().get().begin.line;
+            this.endLine = astNode.getRange().get().end.line;
+        } else {
+            this.startLine = -1;
+            this.endLine = -1;
+        }
     }
 }
+

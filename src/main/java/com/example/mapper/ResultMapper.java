@@ -1,7 +1,7 @@
 package com.example.mapper;
 
 import com.example.EditOperation;
-import com.example.TreeNode;
+import com.example.MappedNode;
 import com.example.dto.EditOperationDto;
 import com.example.dto.FileResultDto;
 import com.example.dto.RepoResultDto;
@@ -22,18 +22,17 @@ public class ResultMapper {
                 .build();
     }
 
-    private static String getTextSafe(TreeNode node) {
-        if (node == null) {
-            return "null";
-        }
+    private static String getTextSafe(MappedNode node) {
+        if (node == null) return "«missing code fragment»";
+
         if (node.getAstNode() != null) {
             try {
                 return node.getAstNode().toString().trim();
             } catch (Exception e) {
-                return node.getLabel();
+                return node.getNodeData().getLabel();
             }
         }
-        return node.getLabel();
+        return node.getNodeData().getLabel();
     }
 
     public static FileResultDto toDto(FileResult fileResult) {

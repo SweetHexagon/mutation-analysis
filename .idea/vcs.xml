@@ -3,5 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/elasticsearch" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/hello-algo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/interviews" vcs="Git" />
   </component>
 </project>

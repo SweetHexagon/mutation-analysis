@@ -15,7 +15,7 @@ public class file2 {
             }
             if (formatField.charAt(idx) != source.charAt(sIdx)) {
                 pos.setErrorIndex(sIdx);
-                return false;
+                return true;
             }
         }
         pos.setIndex(formatField.length() + pos.getIndex());

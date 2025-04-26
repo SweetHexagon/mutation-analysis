@@ -1,6 +1,7 @@
 package com.example.util;
 
 import com.example.CommitPairWithFiles;
+import com.example.service.GitRepositoryManager;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.*;
@@ -11,10 +12,10 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
-import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.filter.PathFilter;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -23,20 +24,78 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 
+@Component
 public class GitUtils {
 
-    public static void cloneRepository(String repoUrl, String localPath) {
+    private static GitRepositoryManager repoManager;
+
+    @Autowired
+    public GitUtils(GitRepositoryManager manager) {
+        GitUtils.repoManager = manager;
+    }
+
+    public static Repository getRepository(String repoDir) throws IOException {
+        return new FileRepositoryBuilder()
+                .setGitDir(new File(repoDir + "/.git"))
+                .readEnvironment()
+                .findGitDir()
+                .build();
+    }
+
+
+    public static Repository ensureClonedAndLoaded(
+            String repoUrl,
+            String localRepoPath
+    ) {
+        File repoDir = new File(localRepoPath);
+
+        // 1) make sure parent folder exists
+        File parent = repoDir.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+
+        // 2) try to load it
         try {
-            Git.cloneRepository()
-                    .setURI(repoUrl)
-                    .setDirectory(new File(localPath))
-                    .call();
-            System.out.println("Repozytorium sklonowane do: " + localPath);
-        } catch (GitAPIException e) {
-            System.err.println("Błąd klonowania repozytorium: " + e.getMessage());
+            System.out.println("Attempting to load repo from " + localRepoPath);
+            return repoManager.loadRepository(localRepoPath);
+        } catch (RuntimeException loadEx) {
+            System.out.println("Load failed: " + loadEx.getMessage());
+            System.out.println("Will clone afresh and retry.");
+
+            // if there's something there that's not a repo, clear it out
+            if (repoDir.exists()) {
+                deleteRecursively(repoDir);
+            }
+
+            // 3) clone
+            try {
+                Git.cloneRepository()
+                        .setURI(repoUrl)
+                        .setDirectory(repoDir)
+                        .call();
+                System.out.println("Cloned to: " + localRepoPath);
+            } catch (GitAPIException gitEx) {
+                throw new RuntimeException("Failed to clone " + repoUrl, gitEx);
+            }
+
+            // 4) load again (this should now succeed)
+            return repoManager.loadRepository(localRepoPath);
         }
     }
+
+    // helper to wipe out a directory tree
+    private static void deleteRecursively(File f) {
+        if (f.isDirectory()) {
+            for (File child : f.listFiles()) {
+                deleteRecursively(child);
+            }
+        }
+        f.delete();
+    }
+
 
     public static List<RevCommit> getCommits(String repoPath) {
         List<RevCommit> commits = new ArrayList<>();
@@ -53,22 +112,19 @@ public class GitUtils {
 
     public static List<CommitPairWithFiles> processRepo(
             String repoUrl,
-            String localPath,
+            String localRepoPath,
             List<String> allowedExtensions,
             boolean debug
     ) throws Exception {
-        // Clone or open repository
-        File repoDir = new File(localPath);
-        Git git;
+
+        File repoDir = new File(localRepoPath);
         if (!repoDir.exists() || Objects.requireNonNull(repoDir.listFiles()).length == 0) {
-            git = Git.cloneRepository()
-                    .setURI(repoUrl)
-                    .setDirectory(repoDir)
-                    .call();
-        } else {
-            git = Git.open(repoDir);
+            ensureClonedAndLoaded(repoUrl, localRepoPath);
         }
-        Repository repository = git.getRepository();
+
+        Repository repository = repoManager.loadRepository(localRepoPath);
+        Git git = new Git(repository);
+
         Iterable<RevCommit> allCommits = git.log().all().call();
 
         // Build unique commit pairs
@@ -224,39 +280,60 @@ public class GitUtils {
         System.out.flush();
     }
 
-    public static String extractFileAtCommit(String repoPath, RevCommit commit, String filePath) {
-        try (Repository repository = Git.open(new File(repoPath)).getRepository();
-             RevWalk revWalk = new RevWalk(repository)) {
+    public static File extractFileAtCommit(RevCommit commit, String filePath) {
+        Repository repository = repoManager.getCurrentRepository();
 
+        try (TreeWalk treeWalk = new TreeWalk(repository)) {
             RevTree tree = commit.getTree();
-            TreeWalk treeWalk = new TreeWalk(repository);
+
             treeWalk.addTree(tree);
-            treeWalk.setRecursive(true);
+            treeWalk.setRecursive(filePath.contains("/"));
             treeWalk.setFilter(PathFilter.create(filePath));
 
             if (!treeWalk.next()) {
-                System.out.println("File not found in commit: " + filePath);
+                System.out.println("File not found in commit: " + filePath + " (commit: " + commit.getName() + ")");
                 return null;
             }
 
             ObjectId objectId = treeWalk.getObjectId(0);
-            ObjectLoader loader = repository.open(objectId);
 
-            File tempFile = File.createTempFile("commit_" + commit.getName(), "_" + filePath.replace("/", "_"));
+            ObjectLoader loader;
+            try {
+                loader = repository.open(objectId);
+            } catch (IOException e) {
+                System.err.println("Failed to open Git object for file: " + filePath +
+                        " in commit: " + commit.getName() +
+                        " (object ID: " + objectId.name() + ")");
+                e.printStackTrace();
+                return null;
+            }
+
+            File tempFile = File.createTempFile(
+                    "commit_" + commit.getName(), "_" + filePath.replace("/", "_"));
 
             try (FileOutputStream out = new FileOutputStream(tempFile)) {
                 loader.copyTo(out);
             }
 
-            return tempFile.getAbsolutePath();
+            return tempFile;
 
         } catch (IOException e) {
-            System.err.println("Error extracting file at commit: " + e.getMessage());
+            System.err.println("Error extracting file at commit: " + commit.getName() +
+                    " | file: " + filePath);
+            e.printStackTrace();
             return null;
         }
     }
 
-    public static List<String> extractFileAtTwoCommits(String repoPath, String relativeFilePath, String oldCommitSha, String newCommitSha, String outputDir) {
+
+
+    public static List<String> extractFileAtTwoCommits(
+            String repoPath,
+            String relativeFilePath,
+            String oldCommitSha,
+            String newCommitSha,
+            String outputDir) {
+
         List<String> extractedPaths = new ArrayList<>();
 
         try (Repository repository = Git.open(new File(repoPath)).getRepository();
@@ -277,6 +354,7 @@ public class GitUtils {
 
         return extractedPaths;
     }
+
 
     private static String extractFileAtCommitToDirectory(Repository repository, RevCommit commit, String filePath, String outputDir) {
         try {

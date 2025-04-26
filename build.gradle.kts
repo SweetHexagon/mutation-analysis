@@ -1,4 +1,6 @@
 plugins {
+    id("org.springframework.boot") version "3.2.5"
+    id("io.spring.dependency-management") version "1.1.4"
     id("java")
     id("application")
 }
@@ -21,11 +23,14 @@ application {
 }
 
 dependencies {
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+    implementation("com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.2")
+
+    // Spring Core and Context for DI
+    implementation("org.springframework.boot:spring-boot-starter")
+
     // Git
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.2.0.202503040940-r")
-
-    // Logging
-    implementation("org.slf4j:slf4j-simple:2.0.9")
 
     // Json output
     implementation("com.google.code.gson:gson:2.13.0")

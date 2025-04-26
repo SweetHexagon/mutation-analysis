@@ -4,15 +4,15 @@ import java.util.List;
 
 public record EditOperation(
         EditOperation.Type type,
-        TreeNode fromNode,
-        TreeNode toNode,
+        MappedNode fromNode,
+        MappedNode toNode,
         String method,
         List<String> context
 ) {
 
     public enum Type {INSERT, DELETE, RELABEL}
 
-    public EditOperation(Type type, TreeNode fromNode, TreeNode toNode) {
+    public EditOperation(Type type, MappedNode fromNode, MappedNode toNode) {
         this(type, fromNode, toNode, null, List.of());
     }
 
@@ -38,7 +38,7 @@ public record EditOperation(
         return sb.toString();
     }
 
-    private static String safeNodeText(TreeNode node) {
+    private static String safeNodeText(MappedNode node) {
         if (node == null) return "null (node)";
         if (node.getAstNode() != null) {
             try {
@@ -47,6 +47,6 @@ public record EditOperation(
                 return "error extracting text";
             }
         }
-        return node.getLabel() != null ? node.getLabel() : "null (no label)";
+        return node.getNodeData().getLabel() != null ? node.getNodeData().getLabel() : "null (no label)";
     }
 }

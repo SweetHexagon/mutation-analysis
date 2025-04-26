@@ -42,4 +42,10 @@ bin/
 .DS_Store
 
 ### Custom ###
+src/main/resources/cache/**
+src/main/resources/commitPairTiming/**
+src/main/resources/extractedFiles/**
 src/main/resources/programOutput/**
+src/main/resources/programOutputFiltered/**
+
+

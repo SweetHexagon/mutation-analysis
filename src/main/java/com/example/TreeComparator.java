@@ -3,8 +3,7 @@ package com.example;
 import com.example.pojo.FileResult;
 import com.example.util.GitUtils;
 import com.example.util.TreeUtils;
-import com.github.javaparser.ParseProblemException;
-import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.*;
 import com.github.javaparser.ast.CompilationUnit;
 import com.google.common.base.Stopwatch;
 import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
@@ -41,20 +40,33 @@ public class TreeComparator {
 
     public static FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit,
                                                      String fileName, boolean debug) {
-        String oldFilePath = GitUtils.extractFileAtCommit(localPath, oldCommit, fileName);
-        String newFilePath = GitUtils.extractFileAtCommit(localPath, newCommit, fileName);
+        File oldFile = GitUtils.extractFileAtCommit(oldCommit, fileName);
+        File newFile = GitUtils.extractFileAtCommit(newCommit, fileName);
 
         if (debug) {
-            System.out.println("File path: " + oldFilePath + " -> " + newFilePath);
+            System.out.println("Temp file path: " +
+                    (oldFile != null ? oldFile.getAbsolutePath() : "null") + " -> " +
+                    (newFile != null ? newFile.getAbsolutePath() : "null"));
         }
 
-
-        if (oldFilePath == null || newFilePath == null) {
+        if (oldFile == null || newFile == null) {
             System.out.println("Couldn't extract both versions for: " + fileName);
             return null;
         }
 
-        return compareFiles(oldFilePath, newFilePath, fileName, oldCommit, newCommit, debug);
+        FileResult result = compareFiles(
+                oldFile,
+                newFile,
+                fileName,
+                oldCommit,
+                newCommit,
+                debug
+        );
+
+        oldFile.delete();
+        newFile.delete();
+
+        return result;
     }
 
     public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
@@ -67,13 +79,16 @@ public class TreeComparator {
             return null;
         }
 
+        File oldFile = new File(oldFilePath);
+        File newFile = new File(newFilePath);
+
         String fileName = extractName(oldFilePath, newFilePath);
-        return compareFiles(oldFilePath, newFilePath, fileName, null, null, debug);
+        return compareFiles(oldFile, newFile, fileName, null, null, debug);
     }
 
     private static FileResult compareFiles(
-            String oldFilePath,
-            String newFilePath,
+            File oldFile,
+            File newFile,
             String fileName,
             RevCommit oldCommit,
             RevCommit newCommit,
@@ -83,30 +98,23 @@ public class TreeComparator {
 
             // 1) PARSING
             sw.start();
-            CompilationUnit oldCu = StaticJavaParser.parse(new File(oldFilePath));
-            CompilationUnit newCu = StaticJavaParser.parse(new File(newFilePath));
+
+            JavaParser parser = new JavaParser();
+            CompilationUnit oldCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(oldFile)).getResult().orElse(null);
+            CompilationUnit newCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(newFile)).getResult().orElse(null);
+
             sw.stop();
             if (debug) log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
             sw.reset();
 
-            if (debug) {
-                System.out.println("=== AST of " + fileName + " @ oldCommit ===");
-                TreeNode oldRoot = TreeUtils.convert(oldCu, 0);
-                printTreeNode(oldRoot, 0);
-                System.out.println("===========================================");
-            }
+
 
             if (oldCu == null || newCu == null) {
                 log.warn("Skipping file due to parse failure: {}", fileName);
                 return null;
             }
 
-            if (debug) {
-                System.out.println("=== AST of " + fileName + " @ newCommit ===");
-                TreeNode newRoot = TreeUtils.convert(newCu, 0);
-                printTreeNode(newRoot, 0);
-                System.out.println("===========================================");
-            }
+
 
             // 2) SPLITTING INTO METHODS
             sw.start();
@@ -135,12 +143,12 @@ public class TreeComparator {
                 // a) convert to APTED trees
                 sw.start();
                 MappedNode mOld = (o != null
-                        ? TreeUtils.convertToApted(TreeUtils.convert(o, 0), null)
+                        ? TreeUtils.convertToApted(o, null)
                         : TreeUtils.emptyMappedPlaceholder());
                 assignPostOrderNumbers(mOld, 0);
 
                 MappedNode mNew = (n != null
-                        ? TreeUtils.convertToApted(TreeUtils.convert(n, 0), null)
+                        ? TreeUtils.convertToApted(n, null)
                         : TreeUtils.emptyMappedPlaceholder());
                 assignPostOrderNumbers(mNew, 0);
                 sw.stop();
@@ -173,7 +181,7 @@ public class TreeComparator {
                 try {
                     allOps.addAll(getOperations(
                             mOld, mNew, apted,
-                            Paths.get(oldFilePath), Paths.get(newFilePath),
+                            Paths.get(oldFile.getAbsolutePath()), Paths.get(newFile.getAbsolutePath()),
                             methodName, debug));
                 } catch (IOException io) {
                     log.error("Failed to build edit-operation contexts for {}", fileName, io);
@@ -185,7 +193,7 @@ public class TreeComparator {
             HashMap<Metrics, Integer> metrics = new HashMap<>();
             metrics.put(Metrics.TREE_EDIT_DISTANCE, totalCost);
             FileResult result = createFileResult(
-                    fileName, oldFilePath, newFilePath,
+                    fileName, oldFile.getAbsolutePath(), newFile.getAbsolutePath(),
                     allOps, metrics,
                     oldCommit != null ? oldCommit.getName() : null,
                     newCommit != null ? newCommit.getName() : null
@@ -210,13 +218,14 @@ public class TreeComparator {
         return cnt;
     }
 
-    private static void printTreeNode(TreeNode node, int indent) {
+    private static void printTreeNode(MappedNode node, int indent) {
         if (node == null) return;
-        System.out.println("  ".repeat(indent) + node.getLabel());
-        for (TreeNode child : node.getChildren()) {
-            printTreeNode(child, indent + 1);
+        System.out.println("  ".repeat(indent) + node.getNodeData().getLabel());
+        for (Node<StringNodeData> child : node.getChildren()) {
+            printTreeNode((MappedNode) child, indent + 1);
         }
     }
+
 //----
 
 // (Add this to the existing FileComparator class)
@@ -265,14 +274,11 @@ public class TreeComparator {
                 MappedNode n = newNodes.get(newIdx);
 
                 if (!Objects.equals(o.getNodeData().getLabel(), n.getNodeData().getLabel())) {
-                    TreeNode from = o.toTreeNode();
-                    TreeNode to = n.toTreeNode();
-
                     raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL
-                            && isDescendant(op.fromNode(), from));
+                            && isDescendant(op.fromNode(), o));
 
                     relabeled.add(o);
-                    raw.add(new EditOperation(EditOperation.Type.RELABEL, from, to));
+                    raw.add(new EditOperation(EditOperation.Type.RELABEL, o, n));
                 }
 
                 if (!deleteStreak.isEmpty()) {
@@ -308,7 +314,7 @@ public class TreeComparator {
         List<EditOperation> enriched = new ArrayList<>(raw.size());
 
         for (EditOperation op : raw) {
-            TreeNode anchor = switch (op.type()) {
+            MappedNode anchor = switch (op.type()) {
                 case RELABEL -> lca(op.fromNode(), op.toNode());
                 case DELETE -> SHOW_DEEP_CONTEXT
                         ? op.fromNode() != null ? op.fromNode().getParent() : null
@@ -321,7 +327,7 @@ public class TreeComparator {
             if (anchor == null) anchor = (op.fromNode() != null ? op.fromNode() : op.toNode());
 
             Path source = (op.type() == EditOperation.Type.INSERT) ? newFile : oldFile;
-            List<String> ctx = context(source, anchor, CONTEXT_MARGIN);
+            List<String> ctx = context(source, anchor);
 
             enriched.add(new EditOperation(
                     op.type(), op.fromNode(), op.toNode(), methodName, ctx));
@@ -343,9 +349,8 @@ public class TreeComparator {
                 insertedRoot = maybeParent;
             }
 
-            MappedNode firstSurvivingDescendant = findFirstNonInsertedDescendant(insertedRoot, insertedSet);
-            TreeNode from = firstSurvivingDescendant != null ? firstSurvivingDescendant.getTreeNode() : null;
-            TreeNode to = insertedRoot.getTreeNode();
+            MappedNode from = findFirstNonInsertedDescendant(insertedRoot, insertedSet);
+            MappedNode to = insertedRoot;
 
             operations.add(new EditOperation(EditOperation.Type.INSERT, from, to));
         }
@@ -407,12 +412,14 @@ public class TreeComparator {
 
         for (MappedNode deletedRoot : topLevelDeletions) {
             MappedNode firstRemainingDescendant = findFirstNonDeletedDescendant(deletedRoot, deletedSet);
-            TreeNode from = deletedRoot.getTreeNode();
-            TreeNode to = firstRemainingDescendant != null ? firstRemainingDescendant.getTreeNode() : null;
+
+            MappedNode from = deletedRoot;
+            MappedNode to = firstRemainingDescendant;
 
             operations.add(new EditOperation(EditOperation.Type.DELETE, from, to));
         }
     }
+
 
 
     private static List<MappedNode> filterDeletionRoots(
@@ -497,10 +504,10 @@ public class TreeComparator {
     }
 
     private static boolean isDescendant(Object possibleDescendant, Object possibleAncestor) {
-        if (!(possibleDescendant instanceof TreeNode descendant) ||
-                !(possibleAncestor instanceof TreeNode ancestor)) return false;
+        if (!(possibleDescendant instanceof MappedNode descendant) ||
+                !(possibleAncestor instanceof MappedNode ancestor)) return false;
 
-        TreeNode current = descendant.getParent();
+        MappedNode current = descendant.getParent();
         while (current != null) {
             if (current == ancestor) return true;
             current = current.getParent();
@@ -512,7 +519,7 @@ public class TreeComparator {
         for (Node<StringNodeData> child : node.getChildren()) {
             currentIndex = assignPostOrderNumbers((MappedNode) child, currentIndex);
         }
-        node.getTreeNode().setPostorderIndex(++currentIndex);
+        node.setPostorderIndex(++currentIndex);
         return currentIndex;
     }
 
@@ -530,20 +537,19 @@ public class TreeComparator {
     }
 
 
-    private static TreeNode lca(TreeNode a, TreeNode b) {
-        Set<TreeNode> path = new HashSet<>();
-        for (TreeNode n = a; n != null; n = n.getParent()) path.add(n);
-        for (TreeNode n = b; n != null; n = n.getParent())
+    private static MappedNode lca(MappedNode a, MappedNode b) {
+        Set<MappedNode> path = new HashSet<>();
+        for (MappedNode n = a; n != null; n = n.getParent()) path.add(n);
+        for (MappedNode n = b; n != null; n = n.getParent())
             if (path.contains(n)) return n;
         return null;
     }
 
     private static List<String> context(Path file,
-                                        TreeNode anchor,
-                                        int margin) throws IOException {
+                                        MappedNode anchor) throws IOException {
         List<String> all = Files.readAllLines(file);
-        int from = Math.max(0, anchor.getStartLine() - 1 - margin);
-        int to = Math.min(all.size(), anchor.getEndLine() + margin);
+        int from = Math.max(0, anchor.getStartLine() - 1 - TreeComparator.CONTEXT_MARGIN);
+        int to = Math.min(all.size(), anchor.getEndLine() + TreeComparator.CONTEXT_MARGIN);
         List<String> out = new ArrayList<>();
         for (int i = from; i < to; i++) {
             out.add(String.format("%5d %s", i + 1, all.get(i)));
