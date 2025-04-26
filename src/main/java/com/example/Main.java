@@ -137,21 +137,14 @@ public class Main implements CommandLineRunner {
 
     private static void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
         ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
-        CompletionService<Triplet<CommitPairWithFiles, Long, String>> cs = new ExecutorCompletionService<>(exec);
+        CompletionService<CommitPairWithFiles> cs = new ExecutorCompletionService<>(exec);
 
         final int total = batch.size();
         List<FileResultDto> batchResults = Collections.synchronizedList(new ArrayList<>());
 
-        for (int i = 0; i < total; i++) {
-            final CommitPairWithFiles pair = batch.get(i);
+        for (CommitPairWithFiles pair : batch) {
             cs.submit(() -> {
-
-                String slowestFile = null;
-                long longestFileDuration = -1;
-
                 for (String file : pair.changedFiles()) {
-                    Instant fileStart = Instant.now();
-
                     FileResult result = TreeComparator.compareFileInTwoCommits(
                             repoDir,
                             pair.oldCommit(),
@@ -159,14 +152,6 @@ public class Main implements CommandLineRunner {
                             file,
                             false
                     );
-
-                    Instant fileEnd = Instant.now();
-                    long fileDuration = Duration.between(fileStart, fileEnd).toMillis();
-                    if (fileDuration > longestFileDuration) {
-                        longestFileDuration = fileDuration;
-                        slowestFile = file;
-                    }
-
                     if (result != null) {
                         int ted = result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE);
                         if (ted > 0 && ted < 5) {
@@ -174,64 +159,28 @@ public class Main implements CommandLineRunner {
                         }
                     }
                 }
-
-                return new Triplet<>(pair, longestFileDuration, slowestFile);
+                return pair;
             });
         }
-
-        CommitPairWithFiles longestPair = null;
-        long maxDuration = -1;
-        String longestFile = null;
 
         int completed = 0;
         while (completed < total) {
             try {
-                Future<Triplet<CommitPairWithFiles, Long, String>> future = cs.take();
-                Triplet<CommitPairWithFiles, Long, String> result = future.get();
-
-                if (result.second() > maxDuration) {
-                    maxDuration = result.second();
-                    longestPair = result.first();
-                    longestFile = result.third();
-                }
+                Future<CommitPairWithFiles> future = cs.take();
+                future.get();
                 completed++;
                 printProgressBar(completed, total);
             } catch (ExecutionException | InterruptedException e) {
                 System.err.println("Task failed: " + e.getMessage());
             }
         }
+
         exec.shutdown();
         System.out.println();
-
-        if (longestPair != null) {
-            saveTiming(repoUrl, longestPair, maxDuration, longestFile);
-        }
 
         JsonUtils.appendBatchResults(repoUrl, batchResults);
         batchResults.clear();
         System.gc();
-    }
-
-    record Triplet<A, B, C>(A first, B second, C third) {
-        public A getFirst() { return first; }
-        public B getSecond() { return second; }
-        public C getThird()  { return third; }
-    }
-
-    private static void saveTiming(String repoUrl, CommitPairWithFiles pair, long durationMs, String file) {
-        String repoName = repoUrl.substring(repoUrl.lastIndexOf("/") + 1).replace(".git", "");
-        String dirPath = "src/main/resources/commitPairTiming/" + repoName;
-        new File(dirPath).mkdirs();
-        String filename = dirPath + "/" + pair.oldCommit().getName() + "_" + pair.newCommit().getName() + ".txt";
-        try (FileWriter writer = new FileWriter(filename)) {
-            writer.write("Repo name: " + repoName + "\n");
-            writer.write("Old Commit: " + pair.oldCommit().getName() + "\n");
-            writer.write("New Commit: " + pair.newCommit().getName() + "\n");
-            writer.write("Longest File: " + file + "\n");
-            writer.write("Duration (ms): " + durationMs + "\n");
-        } catch (IOException e) {
-            System.err.println("Failed to save timing info: " + e.getMessage());
-        }
     }
 
     private static void printProgressBar(int current, int total) {
