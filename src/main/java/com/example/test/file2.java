@@ -1,24 +1,22 @@
-package com.example.test;
-
-import org.junit.Test;
-
-import static org.junit.Assert.assertTrue;
-
 public class file2 {
-    @Override
-    boolean parse(final FastDateParser parser, final Calendar calendar, final String source, final ParsePosition pos, final int maxWidth) {
-        for (int idx = 0; idx < formatField.length(); ++idx) {
-            final int sIdx = idx + pos.getIndex();
-            if (sIdx == source.length()) {
-                pos.setErrorIndex(sIdx);
-                return false;
-            }
-            if (formatField.charAt(idx) != source.charAt(sIdx)) {
-                pos.setErrorIndex(sIdx);
-                return true;
-            }
-        }
-        pos.setIndex(formatField.length() + pos.getIndex());
-        return true;
+    private boolean x;
+    private boolean y;
+
+    public file2(boolean x, boolean y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    /**
+     * Returns true if either x OR y (or both) are true.
+     */
+    public int evaluate() {
+        int a = 1;
+        return -Math.abs(--a);
+    }
+
+    public static void main(String[] args) {
+        file2 c = new file2(true, false);
+        System.out.println("OR result: " + c.evaluate());  // prints: OR result: true
     }
 }

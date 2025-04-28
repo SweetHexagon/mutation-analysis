@@ -5,6 +5,9 @@ import com.example.util.GitUtils;
 import com.example.util.TreeUtils;
 import com.github.javaparser.*;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.Parameter;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.*;
 import com.google.common.base.Stopwatch;
 import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
 import eu.mihosoft.ext.apted.distance.APTED;
@@ -100,11 +103,31 @@ public class TreeComparator {
             sw.start();
 
             JavaParser parser = new JavaParser();
+
             CompilationUnit oldCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(oldFile)).getResult().orElse(null);
             CompilationUnit newCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(newFile)).getResult().orElse(null);
 
             sw.stop();
-            if (debug) log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
+
+            if (debug) {
+                log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
+
+                if (oldCu != null) {
+                    log.info("Old CompilationUnit Tree:");
+                    printTree(oldCu, 0);
+                } else {
+                    log.warn("Old CompilationUnit is null");
+                }
+
+                if (newCu != null) {
+                    log.info("New CompilationUnit Tree:");
+                    printTree(newCu, 0);
+                } else {
+                    log.warn("New CompilationUnit is null");
+                }
+            }
+
+
             sw.reset();
 
 
@@ -592,6 +615,22 @@ public class TreeComparator {
         }
 
         return a.substring(aLen - i);
+    }
+
+
+    private static void printTree(com.github.javaparser.ast.Node node, int indent) {
+        for (int i = 0; i < indent; i++) {
+            System.out.print("  ");
+        }
+
+        String label = TreeUtils.getNodeInfo(node);
+
+
+        System.out.println("- " + label);
+
+        for (com.github.javaparser.ast.Node child : node.getChildNodes()) {
+            printTree(child, indent + 1);
+        }
     }
 
 

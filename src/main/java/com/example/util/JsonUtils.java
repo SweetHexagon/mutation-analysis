@@ -92,10 +92,10 @@ public class JsonUtils {
         repo = repo.replace(".git", "");
         return "comparison_" + owner + "_" + repo + ".json";
     }
-
     /**
      * Reads the comparison JSON for the given repoUrl, filters out duplicate edit operations
-     * (by type, fromText, toText), and writes the result to a new file prefixed with 'unique_'.
+     * (by type, fromText, toText), removes any fileResults that end up with no operations,
+     * and writes the result to a new file prefixed with 'unique_'.
      */
     public static void filterUniqueOperations(String repoUrl) {
         String baseName = generateComparisonFileName(repoUrl);
@@ -107,29 +107,112 @@ public class JsonUtils {
             JsonNode root = mapper.readTree(new File(inputPath));
             ArrayNode fileResults = (ArrayNode) root.get("fileResults");
             Set<String> seen = new HashSet<>();
+            ArrayNode filteredFileResults = mapper.createArrayNode();
 
             for (JsonNode fileResult : fileResults) {
                 ArrayNode ops = (ArrayNode) fileResult.get("editOperations");
-                ArrayNode filtered = mapper.createArrayNode();
+                ArrayNode filteredOps = mapper.createArrayNode();
+
                 for (JsonNode op : ops) {
                     String type = op.path("type").asText();
                     String fromText = op.path("fromText").asText();
                     String toText = op.path("toText").asText();
                     String key = type + "||" + fromText + "||" + toText;
+
                     if (seen.add(key)) {
-                        filtered.add(op);
+                        filteredOps.add(op);
                     }
                 }
-                ((ObjectNode) fileResult).set("editOperations", filtered);
+
+                // Only include fileResult if there are operations left
+                if (filteredOps.size() > 0) {
+                    ObjectNode clone = ((ObjectNode) fileResult).deepCopy();
+                    clone.set("editOperations", filteredOps);
+                    filteredFileResults.add(clone);
+                }
             }
 
-            mapper.writerWithDefaultPrettyPrinter().writeValue(new File(outputPath), root);
-            System.out.println("Wrote filtered comparison JSON to " + outputPath);
+            ObjectNode outRoot = mapper.createObjectNode();
+            outRoot.put("repoUrl", repoUrl);
+            outRoot.set("fileResults", filteredFileResults);
+
+            mapper.writerWithDefaultPrettyPrinter().writeValue(new File(outputPath), outRoot);
+            System.out.println("Wrote unique comparison JSON to " + outputPath);
         } catch (IOException e) {
             System.err.println("Failed to filter unique operations: " + e.getMessage());
         }
     }
 
+    /**
+     * Aggregates all filtered JSON files (either with `fileResults` wrappers or
+     * direct `editOperations` arrays) in a directory into one big JSON of unique ops.
+     * @param filteredDirPath directory containing JSON files to aggregate
+     * @param outputPath where to write the combined JSON
+     */
+    public static void aggregateUniqueOperations(String filteredDirPath, String outputPath) {
+        try {
+            Set<String> seen = new HashSet<>();
+            ArrayNode operations = mapper.createArrayNode();
+            File dir = new File(filteredDirPath);
+            File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
+
+            if (files != null) {
+                for (File f : files) {
+                    JsonNode root = mapper.readTree(f);
+
+                    if (root.has("fileResults")) {
+                        for (JsonNode fileResult : root.get("fileResults")) {
+                            ArrayNode ops = (ArrayNode) fileResult.get("editOperations");
+                            if (ops != null) extractOps(ops, seen, operations);
+                        }
+                    } else if (root.has("editOperations")) {
+                        ArrayNode ops = (ArrayNode) root.get("editOperations");
+                        extractOps(ops, seen, operations);
+                    }
+                }
+            }
+
+            ObjectNode outRoot = mapper.createObjectNode();
+            outRoot.set("editOperations", operations);
+            mapper.writerWithDefaultPrettyPrinter().writeValue(new File(outputPath), outRoot);
+            System.out.println("Aggregated unique operations written to " + outputPath);
+        } catch (IOException e) {
+            System.err.println("Failed to aggregate unique operations: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Helper to dedupe and append operations
+     */
+    private static void extractOps(ArrayNode ops, Set<String> seen, ArrayNode target) {
+        for (JsonNode op : ops) {
+            String type = op.path("type").asText();
+            String fromText = op.path("fromText").asText();
+            String toText = op.path("toText").asText();
+            String key = type + "||" + fromText + "||" + toText;
+            if (seen.add(key)) {
+                target.add(op);
+            }
+        }
+    }
+
+    public static void refilterAllProgramOutput(String programOutputDirPath) {
+        File dir = new File(programOutputDirPath);
+        File[] files = dir.listFiles((d, name) -> name.startsWith("comparison_") && name.endsWith(".json"));
+        if (files != null) {
+            for (File f : files) {
+                String fileName = f.getName(); // e.g. comparison_owner_repo.json
+                String base = fileName.substring("comparison_".length(), fileName.length() - ".json".length());
+                int idx = base.indexOf('_');
+                if (idx > 0) {
+                    String owner = base.substring(0, idx);
+                    String repo = base.substring(idx + 1);
+                    String repoUrl = "https://github.com/" + owner + "/" + repo;
+                    filterUniqueOperations(repoUrl);
+                }
+            }
+        }
+    }
 
 }
 

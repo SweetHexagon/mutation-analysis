@@ -2,8 +2,25 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/Java" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/JavaGuide" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/JeecgBoot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/LeetCodeAnimation" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/RxJava" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/Stirling-PDF" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/advanced-java" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/dbeaver" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/dubbo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/elasticsearch" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/ghidra" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/guava" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/hello-algo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/interviews" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/jadx" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/java-design-patterns" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/mall" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/spring-boot" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/spring-framework" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories/termux-app" vcs="Git" />
   </component>
 </project>
