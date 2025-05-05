@@ -16,7 +16,7 @@ public class TreeUtils {
         String label = getNodeInfo(jpNode);
 
         if (jpNode.getChildNodes().isEmpty()) {
-            label += label + ":" + jpNode.toString();
+            label += ":" + jpNode.toString();
         }
 
         MappedNode node = new MappedNode(label, jpNode, parent);

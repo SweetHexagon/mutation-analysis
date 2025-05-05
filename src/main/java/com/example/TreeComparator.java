@@ -7,6 +7,7 @@ import com.github.javaparser.*;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.*;
 import com.google.common.base.Stopwatch;
 import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
@@ -26,6 +27,7 @@ import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class TreeComparator {
 
@@ -107,24 +109,16 @@ public class TreeComparator {
             CompilationUnit oldCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(oldFile)).getResult().orElse(null);
             CompilationUnit newCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(newFile)).getResult().orElse(null);
 
+            assert oldCu != null;
+            oldCu.getAllContainedComments().forEach(Comment::remove);
+
+            assert newCu != null;
+            newCu.getAllContainedComments().forEach(Comment::remove);
+
             sw.stop();
 
             if (debug) {
                 log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
-
-                if (oldCu != null) {
-                    log.info("Old CompilationUnit Tree:");
-                    printTree(oldCu, 0);
-                } else {
-                    log.warn("Old CompilationUnit is null");
-                }
-
-                if (newCu != null) {
-                    log.info("New CompilationUnit Tree:");
-                    printTree(newCu, 0);
-                } else {
-                    log.warn("New CompilationUnit is null");
-                }
             }
 
 
@@ -296,7 +290,17 @@ public class TreeComparator {
                 MappedNode o = oldNodes.get(oldIdx);
                 MappedNode n = newNodes.get(newIdx);
 
+                if (debug) {
+                    System.out.printf("   Matching nodes: %s -> %s%n",
+                            o.getNodeData().getLabel(), n.getNodeData().getLabel());
+                }
+
+                // RELABEL
                 if (!Objects.equals(o.getNodeData().getLabel(), n.getNodeData().getLabel())) {
+                    if (debug) {
+                        System.out.printf("   -> RELABEL | %s | -> %s%n",
+                                o.getNodeData().getLabel(), n.getNodeData().getLabel());
+                    }
                     raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL
                             && isDescendant(op.fromNode(), o));
 
@@ -304,39 +308,80 @@ public class TreeComparator {
                     raw.add(new EditOperation(EditOperation.Type.RELABEL, o, n));
                 }
 
+                // flush any pending deletes/inserts
                 if (!deleteStreak.isEmpty()) {
+                    if (debug) {
+                        System.out.printf("   Flushing deleteStreak: %d nodes%n",
+                                deleteStreak.size());
+                    }
                     handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
                 if (!insertStreak.isEmpty()) {
+                    if (debug) {
+                        System.out.printf("   Flushing insertStreak: %d nodes%n",
+                                insertStreak.size());
+                    }
                     handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
                 }
 
             } else if (oldIdx >= 0) {
-                deleteStreak.add(oldNodes.get(oldIdx));
+                MappedNode toDelete = oldNodes.get(oldIdx);
+                deleteStreak.add(toDelete);
+                if (debug) {
+                    System.out.printf("   -> QUEUE DELETE %s%n",
+                            toDelete.getNodeData().getLabel());
+                }
 
                 if (!insertStreak.isEmpty()) {
+                    if (debug) {
+                        System.out.printf("   Flushing insertStreak before delete: %d nodes%n",
+                                insertStreak.size());
+                    }
                     handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
                 }
 
             } else if (newIdx >= 0) {
-                insertStreak.add(newNodes.get(newIdx));
+                MappedNode toInsert = newNodes.get(newIdx);
+                insertStreak.add(toInsert);
+                if (debug) {
+                    System.out.printf("   → QUEUE INSERT %s%n",
+                            toInsert.getNodeData().getLabel());
+                }
 
                 if (!deleteStreak.isEmpty()) {
+                    if (debug) {
+                        System.out.printf("   Flushing deleteStreak before insert: %d nodes%n",
+                                deleteStreak.size());
+                    }
                     handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
             }
         }
 
-        if (!deleteStreak.isEmpty()) handleDeletedSubtree(deleteStreak, raw, relabeled);
-        if (!insertStreak.isEmpty()) handleInsertedSubtree(insertStreak, raw);
+        // flush any remaining streaks
+        if (!deleteStreak.isEmpty()) {
+            if (debug) System.out.printf("Final flush deleteStreak: %d nodes%n", deleteStreak.size());
+            handleDeletedSubtree(deleteStreak, raw, relabeled);
+        }
+        if (!insertStreak.isEmpty()) {
+            if (debug) System.out.printf("Final flush insertStreak: %d nodes%n", insertStreak.size());
+            handleInsertedSubtree(insertStreak, raw);
+        }
 
+        // enrich with context
         List<EditOperation> enriched = new ArrayList<>(raw.size());
-
         for (EditOperation op : raw) {
+            if (debug) {
+                System.out.printf("Enriching op: %s (%s -> %s)%n",
+                        op.type(),
+                        op.fromNode() != null ? op.fromNode().getNodeData().getLabel() : "null",
+                        op.toNode()   != null ? op.toNode().getNodeData().getLabel()   : "null");
+            }
+
             MappedNode anchor = switch (op.type()) {
                 case RELABEL -> lca(op.fromNode(), op.toNode());
                 case DELETE -> SHOW_DEEP_CONTEXT
@@ -358,6 +403,7 @@ public class TreeComparator {
 
         return enriched;
     }
+
 
     private static void handleInsertedSubtree(List<MappedNode> insertedNodes,
                                               List<EditOperation> operations) {
@@ -425,67 +471,134 @@ public class TreeComparator {
         return null;
     }
 
-    private static void handleDeletedSubtree(List<MappedNode> deletedNodes,
-                                             List<EditOperation> operations,
-                                             Set<MappedNode> relabeledNodes) {
+    private static void handleDeletedSubtree(
+            List<MappedNode> deletedNodes,
+            List<EditOperation> operations,
+            Set<MappedNode> relabeledNodes) {
         if (deletedNodes.isEmpty()) return;
 
         Set<MappedNode> deletedSet = new HashSet<>(deletedNodes);
-        List<MappedNode> topLevelDeletions = filterDeletionRoots(deletedNodes, deletedSet, relabeledNodes);
+        // Only filter true deletion roots (no ancestor also deleted)
+        List<MappedNode> roots = filterDeletionRoots(deletedNodes, deletedSet);
 
-        for (MappedNode deletedRoot : topLevelDeletions) {
-            MappedNode firstRemainingDescendant = findFirstNonDeletedDescendant(deletedRoot, deletedSet);
+        for (MappedNode root : roots) {
+            // Edge Case 1: relabel descendant then delete subtree
+            if (handleRelabelThenDelete(root, operations, relabeledNodes, deletedSet)) {
+                continue;
+            }
 
-            MappedNode from = deletedRoot;
-            MappedNode to = firstRemainingDescendant;
+            // Edge Case 2: delete all children then relabel parent
+            if (handleDeleteThenRelabel(root, operations, relabeledNodes, deletedSet)) {
+                continue;
+            }
 
-            operations.add(new EditOperation(EditOperation.Type.DELETE, from, to));
+            // Normal delete
+            applyNormalDelete(root, operations, deletedSet);
         }
     }
 
-
-
+    /**
+     * Remove nodes that have a deleted ancestor.
+     */
     private static List<MappedNode> filterDeletionRoots(
-            List<MappedNode> deletedNodes,
-            Set<MappedNode> deletedSet,
-            Set<MappedNode> relabeledNodes
-    ) {
-        List<MappedNode> roots = new ArrayList<>();
-        Set<MappedNode> visited = new HashSet<>();
-
-        for (MappedNode node : deletedNodes) {
-            if (visited.contains(node)) continue;
-
-            boolean isDescendant = false;
-            MappedNode parent = node.getParent();
-
-            while (parent != null) {
-                if (deletedSet.contains(parent)) {
-                    isDescendant = true;
-                    break;
-                }
-                parent = parent.getParent();
-            }
-
-            if (!isDescendant) {
-                MappedNode maybeParent = node.getParent();
-                if (maybeParent != null && relabeledNodes.contains(maybeParent)
-                        && allChildrenDeleted(maybeParent, deletedSet)) {
-
-                    roots.add(maybeParent);
-                    for (Node<StringNodeData> child : maybeParent.getChildren()) {
-                        visited.add((MappedNode) child);
+            List<MappedNode> candidates,
+            Set<MappedNode> deletedSet) {
+        return candidates.stream()
+                .filter(node -> {
+                    MappedNode p = node.getParent();
+                    while (p != null) {
+                        if (deletedSet.contains(p)) return false;
+                        p = p.getParent();
                     }
-                } else {
-                    roots.add(node);
-                }
-            }
-        }
-
-        return roots;
+                    return true;
+                })
+                .collect(Collectors.toList());
     }
 
-    // (Add this to the existing FileComparator class)
+    /**
+     * Collapses relabel+delete: if a descendant was relabeled, replace with relabel(root -> same target).
+     * @return true if handled
+     */
+    private static boolean handleRelabelThenDelete(
+            MappedNode root,
+            List<EditOperation> operations,
+            Set<MappedNode> relabeledNodes,
+            Set<MappedNode> deletedSet) {
+        Optional<MappedNode> leafRelabeled = relabeledNodes.stream()
+                .filter(rn -> isDescendant(rn, root))
+                .findFirst();
+        if (!leafRelabeled.isPresent()) {
+            return false;
+        }
+        MappedNode leaf = leafRelabeled.get();
+        EditOperation leafOp = operations.stream()
+                .filter(op -> op.type() == EditOperation.Type.RELABEL
+                        && op.fromNode().equals(leaf))
+                .findFirst().orElse(null);
+        if (leafOp == null) return false;
+
+        MappedNode target = leafOp.toNode();
+        operations.remove(leafOp);
+        operations.add(new EditOperation(
+                EditOperation.Type.RELABEL,
+                root,
+                target));
+        return true;
+    }
+
+    /**
+     * When all children of a relabeled parent are deleted: collapse deletes into a relabel(parent -> target).
+     * @return true if handled
+     */
+    private static boolean handleDeleteThenRelabel(
+            MappedNode root,
+            List<EditOperation> operations,
+            Set<MappedNode> relabeledNodes,
+            Set<MappedNode> deletedSet) {
+        // Only applies when root's parent is relabeled and all its siblings are in deletedSet
+        MappedNode parent = root.getParent();
+        if (parent == null || !relabeledNodes.contains(parent)) {
+            return false;
+        }
+        // Check if all children of parent are deleted
+        boolean allDeleted = parent.getChildren().stream()
+                .allMatch(n -> deletedSet.contains((MappedNode)n));
+        if (!allDeleted) {
+            return false;
+        }
+        // Find the relabel operation for the parent
+        EditOperation parentRelabel = operations.stream()
+                .filter(op -> op.type() == EditOperation.Type.RELABEL
+                        && op.fromNode().equals(parent))
+                .findFirst().orElse(null);
+        if (parentRelabel == null) return false;
+        MappedNode target = parentRelabel.toNode();
+
+        // Remove all delete ops for these children
+        operations.removeIf(op -> op.type() == EditOperation.Type.DELETE
+                && deletedSet.contains(op.fromNode()));
+        // Replace relabel on parent with itself to the same target
+        operations.remove(parentRelabel);
+        operations.add(new EditOperation(
+                EditOperation.Type.RELABEL,
+                parent,
+                target));
+        return true;
+    }
+
+    /**
+     * Default deletion logic: emit a DELETE op for the root.
+     */
+    private static void applyNormalDelete(
+            MappedNode root,
+            List<EditOperation> operations,
+            Set<MappedNode> deletedSet) {
+        MappedNode firstRemaining = findFirstNonDeletedDescendant(root, deletedSet);
+        operations.add(new EditOperation(
+                EditOperation.Type.DELETE,
+                root,
+                firstRemaining));
+    }
 
     private static boolean allChildrenDeleted(MappedNode parent, Set<MappedNode> deletedSet) {
         for (Node<StringNodeData> child : parent.getChildren()) {

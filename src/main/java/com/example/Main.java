@@ -41,23 +41,24 @@ public class Main implements CommandLineRunner {
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
     static List<String> repoUrls = List.of(
+            "https://github.com/SweetHexagon/pitest-mutators"
             ////"https://github.com/Snailclimb/JavaGuide",            // 5 800 commits
             ////"https://github.com/krahets/hello-algo",               // small
             ////"https://github.com/iluwatar/java-design-patterns",    // 4 327 commits
             ////"https://github.com/macrozheng/mall",                  // small
             ////"https://github.com/doocs/advanced-java",              // small
-            "https://github.com/spring-projects/spring-boot",     // 54 313 commits
+            //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
             ////"https://github.com/MisterBooo/LeetCodeAnimation",     // small
-            "https://github.com/elastic/elasticsearch",            // 86 296 commits
+            //"https://github.com/elastic/elasticsearch",            // 86 296 commits
             ////"https://github.com/kdn251/interviews",                // small
             ////"https://github.com/TheAlgorithms/Java",               // 2 729 commits
-            "https://github.com/spring-projects/spring-framework", // 32 698 commits
+            //"https://github.com/spring-projects/spring-framework", // 32 698 commits
             ////"https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
             ////"https://github.com/Stirling-Tools/Stirling-PDF",      // small
             ////"https://github.com/google/guava",                     // 6 901 commits
             ////"https://github.com/ReactiveX/RxJava",                 // 6 218 commits
             ////"https://github.com/skylot/jadx",                      // small
-            "https://github.com/dbeaver/dbeaver"                  // 27 028 commits
+            //"https://github.com/dbeaver/dbeaver"                  // 27 028 commits
             ////"https://github.com/jeecgboot/JeecgBoot",              // small
             ////"https://github.com/apache/dubbo",                     // 8 414 commits
             ////"https://github.com/termux/termux-app"                 // small
@@ -73,11 +74,11 @@ public class Main implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        //manualTest();
+        manualTest();
 
         //presentation(repoUrls);
 
-        JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
+        //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
     }
 
     public void presentation(List<String> repoUrls) throws InterruptedException {
@@ -155,11 +156,11 @@ public class Main implements CommandLineRunner {
                             pair.oldCommit(),
                             pair.newCommit(),
                             file,
-                            false
+                            true
                     );
                     if (result != null) {
                         int ted = result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE);
-                        if (ted > 0 && ted < 5) {
+                        if (ted > 0 && ted < 10) {
                             batchResults.add(ResultMapper.toDto(result));
                         }
                     }
