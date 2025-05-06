@@ -9,7 +9,9 @@ import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.*;
+import com.github.javaparser.printer.YamlPrinter;
 import com.google.common.base.Stopwatch;
+import com.sun.source.tree.Tree;
 import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
 import eu.mihosoft.ext.apted.distance.APTED;
 import eu.mihosoft.ext.apted.node.Node;
@@ -108,6 +110,10 @@ public class TreeComparator {
 
             CompilationUnit oldCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(oldFile)).getResult().orElse(null);
             CompilationUnit newCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(newFile)).getResult().orElse(null);
+
+            YamlPrinter printer = new YamlPrinter(true);
+            System.out.println(printer.output(oldCu));
+            System.out.println(printer.output(newCu));
 
             assert oldCu != null;
             oldCu.getAllContainedComments().forEach(Comment::remove);
@@ -283,6 +289,13 @@ public class TreeComparator {
         List<MappedNode> insertStreak = new ArrayList<>();
         Set<MappedNode> relabeled = new HashSet<>();
 
+        TreeUtils.printMappedTree(oldTree);
+        TreeUtils.printMappedTree(newTree);
+
+        for (int[] p : mappingPairs){
+            System.out.println(p[0] + " " + p[1]);
+        }
+
         for (int[] p : mappingPairs) {
             int oldIdx = p[0] - 1, newIdx = p[1] - 1;
 
@@ -291,36 +304,56 @@ public class TreeComparator {
                 MappedNode n = newNodes.get(newIdx);
 
                 if (debug) {
-                    System.out.printf("   Matching nodes: %s -> %s%n",
-                            o.getNodeData().getLabel(), n.getNodeData().getLabel());
+                    String oldLabel = o.getNodeData().getLabel();
+                    String newLabel = n.getNodeData().getLabel();
+
+                    System.out.println("\n==================== [MATCHING NODES] ====================");
+                    System.out.println("Old Node:");
+                    if (oldLabel == null) {
+                        System.out.println("    [null]");
+                    } else if (oldLabel.trim().isEmpty()) {
+                        System.out.println("    [empty]");
+                    } else {
+                        System.out.println(indent(oldLabel, "    "));
+                    }
+
+                    System.out.println("------------------");
+                    System.out.println("New Node:");
+                    if (newLabel == null) {
+                        System.out.println("    [null]");
+                    } else if (newLabel.trim().isEmpty()) {
+                        System.out.println("    [empty]");
+                    } else {
+                        System.out.println(indent(newLabel, "    "));
+                    }
+                    System.out.println("==========================================================");
                 }
 
                 // RELABEL
                 if (!Objects.equals(o.getNodeData().getLabel(), n.getNodeData().getLabel())) {
                     if (debug) {
-                        System.out.printf("   -> RELABEL | %s | -> %s%n",
-                                o.getNodeData().getLabel(), n.getNodeData().getLabel());
+                        System.out.println("\n******************** [RELABEL] ********************");
+                        System.out.println("From:\n" + indent(o.getNodeData().getLabel(), "    "));
+                        System.out.println("To:\n" + indent(n.getNodeData().getLabel(), "    "));
+                        System.out.println("***************************************************");
                     }
-                    raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL
-                            && isDescendant(op.fromNode(), o));
-
+                    raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL && isDescendant(op.fromNode(), o));
                     relabeled.add(o);
                     raw.add(new EditOperation(EditOperation.Type.RELABEL, o, n));
                 }
 
-                // flush any pending deletes/inserts
                 if (!deleteStreak.isEmpty()) {
                     if (debug) {
-                        System.out.printf("   Flushing deleteStreak: %d nodes%n",
-                                deleteStreak.size());
+                        System.out.println("\n------ Flushing deleteStreak ------");
+                        System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
                     }
                     handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
                 }
                 if (!insertStreak.isEmpty()) {
                     if (debug) {
-                        System.out.printf("   Flushing insertStreak: %d nodes%n",
-                                insertStreak.size());
+                        System.out.println("\n------ Flushing insertStreak ------");
+                        System.out.printf("Nodes to insert: %d%n", insertStreak.size());
                     }
                     handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
@@ -330,14 +363,14 @@ public class TreeComparator {
                 MappedNode toDelete = oldNodes.get(oldIdx);
                 deleteStreak.add(toDelete);
                 if (debug) {
-                    System.out.printf("   -> QUEUE DELETE %s%n",
-                            toDelete.getNodeData().getLabel());
+                    System.out.println("\n>>> QUEUE DELETE:");
+                    System.out.println(indent(toDelete.getNodeData().getLabel(), "    "));
                 }
 
                 if (!insertStreak.isEmpty()) {
                     if (debug) {
-                        System.out.printf("   Flushing insertStreak before delete: %d nodes%n",
-                                insertStreak.size());
+                        System.out.println("\n------ Flushing insertStreak before delete ------");
+                        System.out.printf("Nodes to insert: %d%n", insertStreak.size());
                     }
                     handleInsertedSubtree(insertStreak, raw);
                     insertStreak.clear();
@@ -347,14 +380,14 @@ public class TreeComparator {
                 MappedNode toInsert = newNodes.get(newIdx);
                 insertStreak.add(toInsert);
                 if (debug) {
-                    System.out.printf("   → QUEUE INSERT %s%n",
-                            toInsert.getNodeData().getLabel());
+                    System.out.println("\n>>> QUEUE INSERT:");
+                    System.out.println(indent(toInsert.getNodeData().getLabel(), "    "));
                 }
 
                 if (!deleteStreak.isEmpty()) {
                     if (debug) {
-                        System.out.printf("   Flushing deleteStreak before insert: %d nodes%n",
-                                deleteStreak.size());
+                        System.out.println("\n------ Flushing deleteStreak before insert ------");
+                        System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
                     }
                     handleDeletedSubtree(deleteStreak, raw, relabeled);
                     deleteStreak.clear();
@@ -362,33 +395,40 @@ public class TreeComparator {
             }
         }
 
-        // flush any remaining streaks
+        // Final flushes
         if (!deleteStreak.isEmpty()) {
-            if (debug) System.out.printf("Final flush deleteStreak: %d nodes%n", deleteStreak.size());
+            if (debug) {
+                System.out.println("\n>>> Final flush of deleteStreak:");
+                System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
+            }
             handleDeletedSubtree(deleteStreak, raw, relabeled);
         }
+
         if (!insertStreak.isEmpty()) {
-            if (debug) System.out.printf("Final flush insertStreak: %d nodes%n", insertStreak.size());
+            if (debug) {
+                System.out.println("\n>>> Final flush of insertStreak:");
+                System.out.printf("Nodes to insert: %d%n", insertStreak.size());
+            }
             handleInsertedSubtree(insertStreak, raw);
         }
 
-        // enrich with context
+        // Enrich
         List<EditOperation> enriched = new ArrayList<>(raw.size());
         for (EditOperation op : raw) {
             if (debug) {
-                System.out.printf("Enriching op: %s (%s -> %s)%n",
-                        op.type(),
-                        op.fromNode() != null ? op.fromNode().getNodeData().getLabel() : "null",
-                        op.toNode()   != null ? op.toNode().getNodeData().getLabel()   : "null");
+                System.out.println("\n### ENRICHING OPERATION ###");
+                System.out.printf("Type: %s%n", op.type());
+                System.out.printf("From: %s%n", op.fromNode() != null ? indent(op.fromNode().getNodeData().getLabel(), "    ") : "null");
+                System.out.printf("To  : %s%n", op.toNode() != null ? indent(op.toNode().getNodeData().getLabel(), "    ") : "null");
             }
 
             MappedNode anchor = switch (op.type()) {
                 case RELABEL -> lca(op.fromNode(), op.toNode());
                 case DELETE -> SHOW_DEEP_CONTEXT
-                        ? op.fromNode() != null ? op.fromNode().getParent() : null
+                        ? (op.fromNode() != null ? op.fromNode().getParent() : null)
                         : op.fromNode();
                 case INSERT -> SHOW_DEEP_CONTEXT
-                        ? op.toNode() != null ? op.toNode().getParent() : null
+                        ? (op.toNode() != null ? op.toNode().getParent() : null)
                         : op.toNode();
             };
 
@@ -397,12 +437,12 @@ public class TreeComparator {
             Path source = (op.type() == EditOperation.Type.INSERT) ? newFile : oldFile;
             List<String> ctx = context(source, anchor);
 
-            enriched.add(new EditOperation(
-                    op.type(), op.fromNode(), op.toNode(), methodName, ctx));
+            enriched.add(new EditOperation(op.type(), op.fromNode(), op.toNode(), methodName, ctx));
         }
 
         return enriched;
     }
+
 
 
     private static void handleInsertedSubtree(List<MappedNode> insertedNodes,
@@ -731,19 +771,10 @@ public class TreeComparator {
     }
 
 
-    private static void printTree(com.github.javaparser.ast.Node node, int indent) {
-        for (int i = 0; i < indent; i++) {
-            System.out.print("  ");
-        }
-
-        String label = TreeUtils.getNodeInfo(node);
-
-
-        System.out.println("- " + label);
-
-        for (com.github.javaparser.ast.Node child : node.getChildNodes()) {
-            printTree(child, indent + 1);
-        }
+    private static String indent(String text, String prefix) {
+        return Arrays.stream(text.split("\n"))
+                .map(line -> prefix + line)
+                .collect(Collectors.joining("\n"));
     }
 
 

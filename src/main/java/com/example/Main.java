@@ -8,6 +8,11 @@ import com.example.pojo.FileResult;
 import com.example.service.GitRepositoryManager;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
+import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.stmt.ExpressionStmt;
+import com.github.javaparser.ast.stmt.Statement;
 import org.apache.commons.io.FileUtils;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -74,6 +79,7 @@ public class Main implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+
         manualTest();
 
         //presentation(repoUrls);
