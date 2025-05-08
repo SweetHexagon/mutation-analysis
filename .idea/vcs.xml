@@ -19,7 +19,6 @@
     <mapping directory="$PROJECT_DIR$/repositories/jadx" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/java-design-patterns" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/mall" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repositories/pitest-mutants" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/spring-boot" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/spring-framework" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/termux-app" vcs="Git" />

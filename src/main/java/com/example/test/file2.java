@@ -6,5 +6,6 @@ public class test {
 
     public void foo() {
         int i = 5;
+        System.out.println(true && true);
     }
 }

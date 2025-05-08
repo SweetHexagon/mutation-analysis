@@ -1,35 +1,49 @@
 package com.example;
 
+import com.github.javaparser.Range;
+import com.github.javaparser.ast.Node;
+import spoon.reflect.declaration.CtElement;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 
+/**
+ * Represents a single AST edit operation detected by the GumTree Spoon comparator.
+ * Supports both source (before) and destination (after) nodes.
+ */
 public record EditOperation(
-        EditOperation.Type type,
-        MappedNode fromNode,
-        MappedNode toNode,
+        Type type,
+        CtElement srcNode,
+        CtElement dstNode,
+        Node srcJavaNode,
+        Node dstJavaNode,
         String method,
         List<String> context
 ) {
 
-    public enum Type {INSERT, DELETE, RELABEL}
+    public enum Type { INSERT, DELETE, UPDATE, MOVE }
 
-    public EditOperation(Type type, MappedNode fromNode, MappedNode toNode) {
-        this(type, fromNode, toNode, null, List.of());
-    }
+
 
     @Override
     public String toString() {
-        String from = safeNodeText(fromNode);
-        String to   = safeNodeText(toNode);
-
         StringBuilder sb = new StringBuilder();
-        switch (type) {
-            case RELABEL -> sb.append("Relabel: '").append(from).append("' -> '").append(to).append('\'');
-            case INSERT  -> sb.append("Insert : '").append(from).append("' -> '").append(to).append('\'');
-            case DELETE  -> sb.append("Delete : '").append(from).append("' -> '").append(to).append('\'');
-            default      -> sb.append("Unknown");
-        }
-        sb.append("  (in ").append(method).append(')').append(System.lineSeparator());
+        sb.append(type.name());
 
+        // show src -> dst
+        String fromText = safeNodeText(srcNode);
+        String toText   = safeNodeText(dstNode);
+        sb.append(": '").append(fromText)
+                .append("' -> '").append(toText).append("'");
+
+        if (method != null) {
+            sb.append("  (in ").append(method).append(')');
+        }
+        sb.append(System.lineSeparator());
+
+        // any extra context lines
         if (context != null && !context.isEmpty()) {
             for (String line : context) {
                 sb.append("    ").append(line).append(System.lineSeparator());
@@ -38,15 +52,17 @@ public record EditOperation(
         return sb.toString();
     }
 
-    private static String safeNodeText(MappedNode node) {
-        if (node == null) return "null (node)";
-        if (node.getAstNode() != null) {
-            try {
-                return node.getAstNode().toString().trim();
-            } catch (Exception e) {
-                return "error extracting text";
-            }
+    private static String safeNodeText(CtElement element) {
+        if (element == null) return "<null>";
+        try {
+            // trim whitespace/newlines
+            return element.toString().replaceAll("\\s+", " ").trim();
+        } catch (Exception e) {
+            return "<error rendering node>";
         }
-        return node.getNodeData().getLabel() != null ? node.getNodeData().getLabel() : "null (no label)";
     }
+
+
+
+
 }

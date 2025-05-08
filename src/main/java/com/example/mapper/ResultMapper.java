@@ -1,11 +1,10 @@
 package com.example.mapper;
 
 import com.example.EditOperation;
-import com.example.MappedNode;
+import com.example.pojo.FileResult;
 import com.example.dto.EditOperationDto;
 import com.example.dto.FileResultDto;
 import com.example.dto.RepoResultDto;
-import com.example.pojo.FileResult;
 import com.example.pojo.RepoResult;
 
 import java.util.Map;
@@ -16,23 +15,22 @@ public class ResultMapper {
     public static EditOperationDto toDto(EditOperation op) {
         return EditOperationDto.builder()
                 .type(op.type().name())
-                .fromText(getTextSafe(op.fromNode()))
-                .toText(getTextSafe(op.toNode()))
+                .fromText(getTextSafe(op.srcNode()))
+                .toText(getTextSafe(op.dstNode()))
+                .method(op.method())
                 .context(op.context())
                 .build();
     }
 
-    private static String getTextSafe(MappedNode node) {
-        if (node == null) return "«missing code fragment»";
-
-        if (node.getAstNode() != null) {
-            try {
-                return node.getAstNode().toString().trim();
-            } catch (Exception e) {
-                return node.getNodeData().getLabel();
-            }
+    private static String getTextSafe(/* CtElement */ Object element) {
+        if (element == null) {
+            return "«missing code fragment»";
         }
-        return node.getNodeData().getLabel();
+        try {
+            return element.toString().trim().replaceAll("\\s+", " ");
+        } catch (Exception e) {
+            return "«error rendering node»";
+        }
     }
 
     public static FileResultDto toDto(FileResult fileResult) {
@@ -60,3 +58,6 @@ public class ResultMapper {
                 .build();
     }
 }
+
+
+

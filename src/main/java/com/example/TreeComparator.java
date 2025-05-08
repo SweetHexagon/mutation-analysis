@@ -1,35 +1,32 @@
 package com.example;
 
+
+import com.example.util.TreeUtils;
+import com.github.javaparser.Range;
+import gumtree.spoon.AstComparator;
+import gumtree.spoon.diff.Diff;
+import gumtree.spoon.diff.operations.*;
+
+import java.util.List;
+import spoon.reflect.declaration.CtMethod;
+
+
 import com.example.pojo.FileResult;
 import com.example.util.GitUtils;
-import com.example.util.TreeUtils;
-import com.github.javaparser.*;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.comments.Comment;
-import com.github.javaparser.ast.expr.*;
-import com.github.javaparser.printer.YamlPrinter;
 import com.google.common.base.Stopwatch;
-import com.sun.source.tree.Tree;
-import eu.mihosoft.ext.apted.costmodel.StringUnitCostModel;
-import eu.mihosoft.ext.apted.distance.APTED;
-import eu.mihosoft.ext.apted.node.Node;
-import eu.mihosoft.ext.apted.node.StringNodeData;
-import com.github.javaparser.ast.body.MethodDeclaration;
+
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import spoon.reflect.declaration.CtElement;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
-
 import java.util.*;
-import java.util.stream.Collectors;
+import com.github.javaparser.ast.Node;
 
 public class TreeComparator {
 
@@ -45,15 +42,21 @@ public class TreeComparator {
         return compareFileInTwoCommits(localPath, oldCommit, newCommit, fileName, false);
     }
 
-    public static FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit,
-                                                     String fileName, boolean debug) {
+    public static FileResult compareFileInTwoCommits(
+            String localPath,
+            RevCommit oldCommit,
+            RevCommit newCommit,
+            String fileName,
+            boolean debug) {
+
         File oldFile = GitUtils.extractFileAtCommit(oldCommit, fileName);
         File newFile = GitUtils.extractFileAtCommit(newCommit, fileName);
 
         if (debug) {
-            System.out.println("Temp file path: " +
-                    (oldFile != null ? oldFile.getAbsolutePath() : "null") + " -> " +
-                    (newFile != null ? newFile.getAbsolutePath() : "null"));
+            System.out.println("Temp file path: "
+                    + (oldFile != null ? oldFile.getAbsolutePath() : "null")
+                    + " → "
+                    + (newFile != null ? newFile.getAbsolutePath() : "null"));
         }
 
         if (oldFile == null || newFile == null) {
@@ -61,26 +64,27 @@ public class TreeComparator {
             return null;
         }
 
-        FileResult result = compareFiles(
-                oldFile,
-                newFile,
-                fileName,
-                oldCommit,
-                newCommit,
-                debug
-        );
-
-        oldFile.delete();
-        newFile.delete();
-
-        return result;
+        try {
+            return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
+        } catch (Exception e) {
+        if (debug) {
+            System.err.println("Failed comparing files: " + e.getMessage());
+        }
+        return null;
+    } finally {
+            oldFile.delete();
+            newFile.delete();
+        }
     }
 
     public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
         return compareTwoFilePaths(oldFilePath, newFilePath, false);
     }
 
-    public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath, boolean debug) {
+    public static FileResult compareTwoFilePaths(
+            String oldFilePath,
+            String newFilePath,
+            boolean debug) {
         if (oldFilePath == null || newFilePath == null) {
             System.out.println("Both file paths must be provided.");
             return null;
@@ -88,9 +92,16 @@ public class TreeComparator {
 
         File oldFile = new File(oldFilePath);
         File newFile = new File(newFilePath);
-
         String fileName = extractName(oldFilePath, newFilePath);
-        return compareFiles(oldFile, newFile, fileName, null, null, debug);
+
+        try {
+            return compareFiles(oldFile, newFile, fileName, null, null, debug);
+        } catch (Exception e) {
+            if (debug) {
+                System.err.println("Failed comparing files: " + e.getMessage());
+            }
+            return null;
+        }
     }
 
     private static FileResult compareFiles(
@@ -99,162 +110,104 @@ public class TreeComparator {
             String fileName,
             RevCommit oldCommit,
             RevCommit newCommit,
-            boolean debug) {
-        try {
-            Stopwatch sw = Stopwatch.createUnstarted();
+            boolean debug) throws Exception {
 
-            // 1) PARSING
-            sw.start();
+        Stopwatch sw = Stopwatch.createStarted();
+        AstComparator comp = new AstComparator();
+        Diff diff = comp.compare(oldFile, newFile);
+        sw.stop();
 
-            JavaParser parser = new JavaParser();
+        if (debug) {
+            System.out.printf("AST diff for %s took %d ms%n", fileName, sw.elapsed(TimeUnit.MILLISECONDS));
+        }
 
-            CompilationUnit oldCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(oldFile)).getResult().orElse(null);
-            CompilationUnit newCu = parser.parse(ParseStart.COMPILATION_UNIT, Providers.provider(newFile)).getResult().orElse(null);
+        List<Operation> ops = diff.getRootOperations();
+        List<EditOperation> allOps = new ArrayList<>();
 
-            YamlPrinter printer = new YamlPrinter(true);
-            System.out.println(printer.output(oldCu));
-            System.out.println(printer.output(newCu));
-
-            assert oldCu != null;
-            oldCu.getAllContainedComments().forEach(Comment::remove);
-
-            assert newCu != null;
-            newCu.getAllContainedComments().forEach(Comment::remove);
-
-            sw.stop();
-
-            if (debug) {
-                log.info("Parsing took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
+        for (Operation op : ops) {
+            // 1) normalize the action name
+            String raw = op.getAction().getName();
+            String base = raw.contains("-") ? raw.substring(0, raw.indexOf('-')) : raw;
+            EditOperation.Type type;
+            try {
+                type = EditOperation.Type.valueOf(base.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                if (debug) System.err.println("Skipping unrecognized action: " + raw);
+                continue;
             }
 
+            CtElement src = null, dst = null;
 
-            sw.reset();
-
-
-
-            if (oldCu == null || newCu == null) {
-                log.warn("Skipping file due to parse failure: {}", fileName);
-                return null;
-            }
-
-
-
-            // 2) SPLITTING INTO METHODS
-            sw.start();
-            List<MethodDeclaration> oldMethods = oldCu.findAll(MethodDeclaration.class);
-            List<MethodDeclaration> newMethods = newCu.findAll(MethodDeclaration.class);
-            sw.stop();
-            if (debug) log.info("Splitting into methods took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
-            sw.reset();
-
-            List<EditOperation> allOps = new ArrayList<>();
-            int totalCost = 0;
-
-            // 3) PER-METHOD CONVERT + EDIT-DISTANCE
-            int count = Math.max(oldMethods.size(), newMethods.size());
-            for (int i = 0; i < count; i++) {
-                MethodDeclaration o = i < oldMethods.size() ? oldMethods.get(i) : null;
-                MethodDeclaration n = i < newMethods.size() ? newMethods.get(i) : null;
-
-                int oldSize = countAstNodes(o);
-                int newSize = countAstNodes(n);
-                if (debug) log.info("Method #{} -> AST nodes old={} new={}", i, oldSize, newSize);
-
-                String methodName = o != null ? o.getNameAsString()
-                        : (n != null ? n.getNameAsString() : "<empty>");
-
-                // a) convert to APTED trees
-                sw.start();
-                MappedNode mOld = (o != null
-                        ? TreeUtils.convertToApted(o, null)
-                        : TreeUtils.emptyMappedPlaceholder());
-                assignPostOrderNumbers(mOld, 0);
-
-                MappedNode mNew = (n != null
-                        ? TreeUtils.convertToApted(n, null)
-                        : TreeUtils.emptyMappedPlaceholder());
-                assignPostOrderNumbers(mNew, 0);
-                sw.stop();
-                long convertMs = sw.elapsed(TimeUnit.MILLISECONDS);
-
-                List<MappedNode> oldNodes = getPostOrder(mOld);
-                List<MappedNode> newNodes = getPostOrder(mNew);
-
-                if (debug) log.info("Comparing method \"{}\": oldTreeNodes={} newTreeNodes={}",
-                        methodName, oldNodes.size(), newNodes.size());
-
-                sw.reset();
-                // b) compute edit distance
-                sw.start();
-                APTED<StringUnitCostModel, StringNodeData> apted =
-                        new APTED<>(new StringUnitCostModel());
-
-                int cost = (int) apted.computeEditDistance(mOld, mNew);
-                sw.stop();
-                long distMs = sw.elapsed(TimeUnit.MILLISECONDS);
-                sw.reset();
-
-                totalCost += cost;
-
-                if (debug) {
-                    log.info("Method #{} [{}] -> convert={} ms, editDistance={} ms (cost={})",
-                            i, methodName, convertMs, distMs, cost);
+            switch (op) {
+                case InsertOperation ins ->
+                        dst = ins.getNode();
+                case DeleteOperation del ->
+                        src = del.getNode();
+                case UpdateOperation upd -> {
+                    src = upd.getSrcNode();
+                    dst = upd.getDstNode();
                 }
+                case MoveOperation mov -> {
+                    src = mov.getSrcNode();
+                    dst = mov.getDstNode();
+                }
+                default -> throw new IllegalArgumentException("Unknown edit type: " + type);
+            }
 
-                try {
-                    allOps.addAll(getOperations(
-                            mOld, mNew, apted,
-                            Paths.get(oldFile.getAbsolutePath()), Paths.get(newFile.getAbsolutePath()),
-                            methodName, debug));
-                } catch (IOException io) {
-                    log.error("Failed to build edit-operation contexts for {}", fileName, io);
+            Node javaParserSrcNode = (src  != null ? TreeUtils.findJavaParserNode(oldFile,  src).orElse(null) : null);
+            Node javaParserDstNode = (dst  != null ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null) : null);
+
+            String methodName = null;
+            CtElement contextCt = (dst != null ? dst : src);
+
+            if (contextCt != null) {
+                CtElement parent = contextCt;
+                while (parent != null && !(parent instanceof CtMethod<?>)) {
+                    parent = parent.getParent();
+                }
+                if (parent != null) {
+                    methodName = ((CtMethod<?>) parent).getSimpleName();
                 }
             }
 
-            // 4) BUILD RESULT
-            sw.start();
-            HashMap<Metrics, Integer> metrics = new HashMap<>();
-            metrics.put(Metrics.TREE_EDIT_DISTANCE, totalCost);
-            FileResult result = createFileResult(
-                    fileName, oldFile.getAbsolutePath(), newFile.getAbsolutePath(),
-                    allOps, metrics,
-                    oldCommit != null ? oldCommit.getName() : null,
-                    newCommit != null ? newCommit.getName() : null
+            CtElement contextElem = (dst != null ? dst : src);
+
+            List<String> contextList = List.of();
+            if (contextElem != null) {
+                File fileForContext = (dst != null ? newFile : oldFile);
+                contextList = TreeUtils.extractCtElementContext(fileForContext, contextElem, 1);
+            }
+
+            EditOperation eop = new EditOperation(
+                    type,
+                    src,
+                    dst,
+                    javaParserSrcNode,
+                    javaParserDstNode,
+                    methodName,
+                    contextList
             );
-            sw.stop();
-            if (debug) log.info("Building FileResult took {} ms", sw.elapsed(TimeUnit.MILLISECONDS));
-
-            return result;
-        } catch (IOException | ParseProblemException e) {
-            if (debug) log.error("Failed comparing {}: {}", fileName, e.getMessage());
-            return null;
+            allOps.add(eop);
         }
+
+        Map<Metrics, Integer> metrics = Map.of(Metrics.EDITS, ops.size());
+
+        return createFileResult(
+                fileName,
+                oldFile.getAbsolutePath(),
+                newFile.getAbsolutePath(),
+                allOps,
+                metrics,
+                oldCommit != null ? oldCommit.getName() : null,
+                newCommit != null ? newCommit.getName() : null
+        );
     }
 
-    // helper to count JavaParser AST nodes
-    private static int countAstNodes(com.github.javaparser.ast.Node node) {
-        if (node == null) return 0;
-        int cnt = 1;
-        for (com.github.javaparser.ast.Node child : node.getChildNodes()) {
-            cnt += countAstNodes(child);
-        }
-        return cnt;
-    }
 
-    private static void printTreeNode(MappedNode node, int indent) {
-        if (node == null) return;
-        System.out.println("  ".repeat(indent) + node.getNodeData().getLabel());
-        for (Node<StringNodeData> child : node.getChildren()) {
-            printTreeNode((MappedNode) child, indent + 1);
-        }
-    }
 
-//----
-
-// (Add this to the existing FileComparator class)
 
     private static FileResult createFileResult(String fileName, String original, String changed,
-                                               List<EditOperation> ops, HashMap<Metrics, Integer> metrics,
+                                               List<EditOperation> ops, Map<Metrics, Integer> metrics,
                                                String oldCommit, String newCommit) {
         return FileResult.builder()
                 .name(fileName)
@@ -265,473 +218,9 @@ public class TreeComparator {
                 .build();
     }
 
-    private static void printDebugInfo(MappedNode oldTree, MappedNode newTree, int cost,
-                                       APTED<StringUnitCostModel, StringNodeData> apted) {
-        System.out.println("APTed Old Tree: " + oldTree);
-        System.out.println("APTed New Tree: " + newTree);
-        System.out.println("Edit Distance Cost: " + cost);
-    }
 
-    private static List<EditOperation> getOperations(MappedNode oldTree,
-                                                     MappedNode newTree,
-                                                     APTED<StringUnitCostModel, StringNodeData> apted,
-                                                     Path oldFile,
-                                                     Path newFile,
-                                                     String methodName,
-                                                     boolean debug) throws IOException {
 
-        List<EditOperation> raw = new ArrayList<>();
-        List<int[]> mappingPairs = apted.computeEditMapping();
-        List<MappedNode> oldNodes = getPostOrder(oldTree);
-        List<MappedNode> newNodes = getPostOrder(newTree);
 
-        List<MappedNode> deleteStreak = new ArrayList<>();
-        List<MappedNode> insertStreak = new ArrayList<>();
-        Set<MappedNode> relabeled = new HashSet<>();
-
-        TreeUtils.printMappedTree(oldTree);
-        TreeUtils.printMappedTree(newTree);
-
-        for (int[] p : mappingPairs){
-            System.out.println(p[0] + " " + p[1]);
-        }
-
-        for (int[] p : mappingPairs) {
-            int oldIdx = p[0] - 1, newIdx = p[1] - 1;
-
-            if (oldIdx >= 0 && newIdx >= 0) {
-                MappedNode o = oldNodes.get(oldIdx);
-                MappedNode n = newNodes.get(newIdx);
-
-                if (debug) {
-                    String oldLabel = o.getNodeData().getLabel();
-                    String newLabel = n.getNodeData().getLabel();
-
-                    System.out.println("\n==================== [MATCHING NODES] ====================");
-                    System.out.println("Old Node:");
-                    if (oldLabel == null) {
-                        System.out.println("    [null]");
-                    } else if (oldLabel.trim().isEmpty()) {
-                        System.out.println("    [empty]");
-                    } else {
-                        System.out.println(indent(oldLabel, "    "));
-                    }
-
-                    System.out.println("------------------");
-                    System.out.println("New Node:");
-                    if (newLabel == null) {
-                        System.out.println("    [null]");
-                    } else if (newLabel.trim().isEmpty()) {
-                        System.out.println("    [empty]");
-                    } else {
-                        System.out.println(indent(newLabel, "    "));
-                    }
-                    System.out.println("==========================================================");
-                }
-
-                // RELABEL
-                if (!Objects.equals(o.getNodeData().getLabel(), n.getNodeData().getLabel())) {
-                    if (debug) {
-                        System.out.println("\n******************** [RELABEL] ********************");
-                        System.out.println("From:\n" + indent(o.getNodeData().getLabel(), "    "));
-                        System.out.println("To:\n" + indent(n.getNodeData().getLabel(), "    "));
-                        System.out.println("***************************************************");
-                    }
-                    raw.removeIf(op -> op.type() == EditOperation.Type.RELABEL && isDescendant(op.fromNode(), o));
-                    relabeled.add(o);
-                    raw.add(new EditOperation(EditOperation.Type.RELABEL, o, n));
-                }
-
-                if (!deleteStreak.isEmpty()) {
-                    if (debug) {
-                        System.out.println("\n------ Flushing deleteStreak ------");
-                        System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
-                    }
-                    handleDeletedSubtree(deleteStreak, raw, relabeled);
-                    deleteStreak.clear();
-                }
-                if (!insertStreak.isEmpty()) {
-                    if (debug) {
-                        System.out.println("\n------ Flushing insertStreak ------");
-                        System.out.printf("Nodes to insert: %d%n", insertStreak.size());
-                    }
-                    handleInsertedSubtree(insertStreak, raw);
-                    insertStreak.clear();
-                }
-
-            } else if (oldIdx >= 0) {
-                MappedNode toDelete = oldNodes.get(oldIdx);
-                deleteStreak.add(toDelete);
-                if (debug) {
-                    System.out.println("\n>>> QUEUE DELETE:");
-                    System.out.println(indent(toDelete.getNodeData().getLabel(), "    "));
-                }
-
-                if (!insertStreak.isEmpty()) {
-                    if (debug) {
-                        System.out.println("\n------ Flushing insertStreak before delete ------");
-                        System.out.printf("Nodes to insert: %d%n", insertStreak.size());
-                    }
-                    handleInsertedSubtree(insertStreak, raw);
-                    insertStreak.clear();
-                }
-
-            } else if (newIdx >= 0) {
-                MappedNode toInsert = newNodes.get(newIdx);
-                insertStreak.add(toInsert);
-                if (debug) {
-                    System.out.println("\n>>> QUEUE INSERT:");
-                    System.out.println(indent(toInsert.getNodeData().getLabel(), "    "));
-                }
-
-                if (!deleteStreak.isEmpty()) {
-                    if (debug) {
-                        System.out.println("\n------ Flushing deleteStreak before insert ------");
-                        System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
-                    }
-                    handleDeletedSubtree(deleteStreak, raw, relabeled);
-                    deleteStreak.clear();
-                }
-            }
-        }
-
-        // Final flushes
-        if (!deleteStreak.isEmpty()) {
-            if (debug) {
-                System.out.println("\n>>> Final flush of deleteStreak:");
-                System.out.printf("Nodes to delete: %d%n", deleteStreak.size());
-            }
-            handleDeletedSubtree(deleteStreak, raw, relabeled);
-        }
-
-        if (!insertStreak.isEmpty()) {
-            if (debug) {
-                System.out.println("\n>>> Final flush of insertStreak:");
-                System.out.printf("Nodes to insert: %d%n", insertStreak.size());
-            }
-            handleInsertedSubtree(insertStreak, raw);
-        }
-
-        // Enrich
-        List<EditOperation> enriched = new ArrayList<>(raw.size());
-        for (EditOperation op : raw) {
-            if (debug) {
-                System.out.println("\n### ENRICHING OPERATION ###");
-                System.out.printf("Type: %s%n", op.type());
-                System.out.printf("From: %s%n", op.fromNode() != null ? indent(op.fromNode().getNodeData().getLabel(), "    ") : "null");
-                System.out.printf("To  : %s%n", op.toNode() != null ? indent(op.toNode().getNodeData().getLabel(), "    ") : "null");
-            }
-
-            MappedNode anchor = switch (op.type()) {
-                case RELABEL -> lca(op.fromNode(), op.toNode());
-                case DELETE -> SHOW_DEEP_CONTEXT
-                        ? (op.fromNode() != null ? op.fromNode().getParent() : null)
-                        : op.fromNode();
-                case INSERT -> SHOW_DEEP_CONTEXT
-                        ? (op.toNode() != null ? op.toNode().getParent() : null)
-                        : op.toNode();
-            };
-
-            if (anchor == null) anchor = (op.fromNode() != null ? op.fromNode() : op.toNode());
-
-            Path source = (op.type() == EditOperation.Type.INSERT) ? newFile : oldFile;
-            List<String> ctx = context(source, anchor);
-
-            enriched.add(new EditOperation(op.type(), op.fromNode(), op.toNode(), methodName, ctx));
-        }
-
-        return enriched;
-    }
-
-
-
-    private static void handleInsertedSubtree(List<MappedNode> insertedNodes,
-                                              List<EditOperation> operations) {
-        if (insertedNodes.isEmpty()) return;
-
-        Set<MappedNode> insertedSet = new HashSet<>(insertedNodes);
-        List<MappedNode> topLevelInsertions = filterInsertionRoots(insertedNodes, insertedSet);
-
-        for (MappedNode insertedRoot : topLevelInsertions) {
-            MappedNode maybeParent = insertedRoot.getParent();
-            if (maybeParent != null && allChildrenInserted(maybeParent, insertedSet)) {
-                insertedRoot = maybeParent;
-            }
-
-            MappedNode from = findFirstNonInsertedDescendant(insertedRoot, insertedSet);
-            MappedNode to = insertedRoot;
-
-            operations.add(new EditOperation(EditOperation.Type.INSERT, from, to));
-        }
-    }
-
-    private static List<MappedNode> filterInsertionRoots(List<MappedNode> insertedNodes,
-                                                         Set<MappedNode> insertedSet) {
-        List<MappedNode> roots = new ArrayList<>();
-
-        for (MappedNode node : insertedNodes) {
-            boolean isDescendant = false;
-            MappedNode parent = node.getParent();
-
-            while (parent != null) {
-                if (insertedSet.contains(parent)) {
-                    isDescendant = true;
-                    break;
-                }
-                parent = parent.getParent();
-            }
-
-            if (!isDescendant) {
-                roots.add(node);
-            }
-        }
-
-        return roots;
-    }
-
-    private static MappedNode findFirstNonInsertedDescendant(MappedNode root,
-                                                             Set<MappedNode> insertedSet) {
-        Queue<MappedNode> queue = new LinkedList<>();
-        queue.add(root);
-
-        while (!queue.isEmpty()) {
-            MappedNode current = queue.poll();
-
-            for (Node<StringNodeData> child : current.getChildren()) {
-                MappedNode mappedChild = (MappedNode) child;
-
-                if (!insertedSet.contains(mappedChild)) {
-                    return mappedChild;
-                }
-
-                queue.add(mappedChild);
-            }
-        }
-
-        return null;
-    }
-
-    private static void handleDeletedSubtree(
-            List<MappedNode> deletedNodes,
-            List<EditOperation> operations,
-            Set<MappedNode> relabeledNodes) {
-        if (deletedNodes.isEmpty()) return;
-
-        Set<MappedNode> deletedSet = new HashSet<>(deletedNodes);
-        // Only filter true deletion roots (no ancestor also deleted)
-        List<MappedNode> roots = filterDeletionRoots(deletedNodes, deletedSet);
-
-        for (MappedNode root : roots) {
-            // Edge Case 1: relabel descendant then delete subtree
-            if (handleRelabelThenDelete(root, operations, relabeledNodes, deletedSet)) {
-                continue;
-            }
-
-            // Edge Case 2: delete all children then relabel parent
-            if (handleDeleteThenRelabel(root, operations, relabeledNodes, deletedSet)) {
-                continue;
-            }
-
-            // Normal delete
-            applyNormalDelete(root, operations, deletedSet);
-        }
-    }
-
-    /**
-     * Remove nodes that have a deleted ancestor.
-     */
-    private static List<MappedNode> filterDeletionRoots(
-            List<MappedNode> candidates,
-            Set<MappedNode> deletedSet) {
-        return candidates.stream()
-                .filter(node -> {
-                    MappedNode p = node.getParent();
-                    while (p != null) {
-                        if (deletedSet.contains(p)) return false;
-                        p = p.getParent();
-                    }
-                    return true;
-                })
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Collapses relabel+delete: if a descendant was relabeled, replace with relabel(root -> same target).
-     * @return true if handled
-     */
-    private static boolean handleRelabelThenDelete(
-            MappedNode root,
-            List<EditOperation> operations,
-            Set<MappedNode> relabeledNodes,
-            Set<MappedNode> deletedSet) {
-        Optional<MappedNode> leafRelabeled = relabeledNodes.stream()
-                .filter(rn -> isDescendant(rn, root))
-                .findFirst();
-        if (!leafRelabeled.isPresent()) {
-            return false;
-        }
-        MappedNode leaf = leafRelabeled.get();
-        EditOperation leafOp = operations.stream()
-                .filter(op -> op.type() == EditOperation.Type.RELABEL
-                        && op.fromNode().equals(leaf))
-                .findFirst().orElse(null);
-        if (leafOp == null) return false;
-
-        MappedNode target = leafOp.toNode();
-        operations.remove(leafOp);
-        operations.add(new EditOperation(
-                EditOperation.Type.RELABEL,
-                root,
-                target));
-        return true;
-    }
-
-    /**
-     * When all children of a relabeled parent are deleted: collapse deletes into a relabel(parent -> target).
-     * @return true if handled
-     */
-    private static boolean handleDeleteThenRelabel(
-            MappedNode root,
-            List<EditOperation> operations,
-            Set<MappedNode> relabeledNodes,
-            Set<MappedNode> deletedSet) {
-        // Only applies when root's parent is relabeled and all its siblings are in deletedSet
-        MappedNode parent = root.getParent();
-        if (parent == null || !relabeledNodes.contains(parent)) {
-            return false;
-        }
-        // Check if all children of parent are deleted
-        boolean allDeleted = parent.getChildren().stream()
-                .allMatch(n -> deletedSet.contains((MappedNode)n));
-        if (!allDeleted) {
-            return false;
-        }
-        // Find the relabel operation for the parent
-        EditOperation parentRelabel = operations.stream()
-                .filter(op -> op.type() == EditOperation.Type.RELABEL
-                        && op.fromNode().equals(parent))
-                .findFirst().orElse(null);
-        if (parentRelabel == null) return false;
-        MappedNode target = parentRelabel.toNode();
-
-        // Remove all delete ops for these children
-        operations.removeIf(op -> op.type() == EditOperation.Type.DELETE
-                && deletedSet.contains(op.fromNode()));
-        // Replace relabel on parent with itself to the same target
-        operations.remove(parentRelabel);
-        operations.add(new EditOperation(
-                EditOperation.Type.RELABEL,
-                parent,
-                target));
-        return true;
-    }
-
-    /**
-     * Default deletion logic: emit a DELETE op for the root.
-     */
-    private static void applyNormalDelete(
-            MappedNode root,
-            List<EditOperation> operations,
-            Set<MappedNode> deletedSet) {
-        MappedNode firstRemaining = findFirstNonDeletedDescendant(root, deletedSet);
-        operations.add(new EditOperation(
-                EditOperation.Type.DELETE,
-                root,
-                firstRemaining));
-    }
-
-    private static boolean allChildrenDeleted(MappedNode parent, Set<MappedNode> deletedSet) {
-        for (Node<StringNodeData> child : parent.getChildren()) {
-            if (!deletedSet.contains((MappedNode) child)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean allChildrenInserted(MappedNode parent, Set<MappedNode> insertedSet) {
-        for (Node<StringNodeData> child : parent.getChildren()) {
-            if (!insertedSet.contains((MappedNode) child)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static MappedNode findFirstNonDeletedDescendant(MappedNode root, Set<MappedNode> deletedSet) {
-        Queue<MappedNode> queue = new LinkedList<>();
-        queue.add(root);
-
-        while (!queue.isEmpty()) {
-            MappedNode current = queue.poll();
-
-            for (Node<StringNodeData> child : current.getChildren()) {
-                MappedNode mappedChild = (MappedNode) child;
-
-                if (!deletedSet.contains(mappedChild)) {
-                    return mappedChild;
-                }
-
-                queue.add(mappedChild);
-            }
-        }
-
-        return null;
-    }
-
-    private static boolean isDescendant(Object possibleDescendant, Object possibleAncestor) {
-        if (!(possibleDescendant instanceof MappedNode descendant) ||
-                !(possibleAncestor instanceof MappedNode ancestor)) return false;
-
-        MappedNode current = descendant.getParent();
-        while (current != null) {
-            if (current == ancestor) return true;
-            current = current.getParent();
-        }
-        return false;
-    }
-
-    private static int assignPostOrderNumbers(MappedNode node, int currentIndex) {
-        for (Node<StringNodeData> child : node.getChildren()) {
-            currentIndex = assignPostOrderNumbers((MappedNode) child, currentIndex);
-        }
-        node.setPostorderIndex(++currentIndex);
-        return currentIndex;
-    }
-
-    public static List<MappedNode> getPostOrder(MappedNode root) {
-        List<MappedNode> result = new ArrayList<>();
-        fillPostOrder(root, result);
-        return result;
-    }
-
-    private static void fillPostOrder(MappedNode node, List<MappedNode> list) {
-        for (Node<StringNodeData> child : node.getChildren()) {
-            fillPostOrder((MappedNode) child, list);
-        }
-        list.add(node);
-    }
-
-
-    private static MappedNode lca(MappedNode a, MappedNode b) {
-        Set<MappedNode> path = new HashSet<>();
-        for (MappedNode n = a; n != null; n = n.getParent()) path.add(n);
-        for (MappedNode n = b; n != null; n = n.getParent())
-            if (path.contains(n)) return n;
-        return null;
-    }
-
-    private static List<String> context(Path file,
-                                        MappedNode anchor) throws IOException {
-        List<String> all = Files.readAllLines(file);
-        int from = Math.max(0, anchor.getStartLine() - 1 - TreeComparator.CONTEXT_MARGIN);
-        int to = Math.min(all.size(), anchor.getEndLine() + TreeComparator.CONTEXT_MARGIN);
-        List<String> out = new ArrayList<>();
-        for (int i = from; i < to; i++) {
-            out.add(String.format("%5d %s", i + 1, all.get(i)));
-        }
-        return out;
-    }
 
     private static String extractName(String oldFilePath, String newFilePath) {
         if (oldFilePath == null || newFilePath == null) {
@@ -751,9 +240,7 @@ public class TreeComparator {
             suffix = suffix.substring(1);
         }
 
-        String formattedPath = suffix.replace('_', '/');
-
-        return formattedPath;
+        return suffix.replace('_', '/');
     }
 
     private static String commonSuffix(String a, String b) {
@@ -768,13 +255,6 @@ public class TreeComparator {
         }
 
         return a.substring(aLen - i);
-    }
-
-
-    private static String indent(String text, String prefix) {
-        return Arrays.stream(text.split("\n"))
-                .map(line -> prefix + line)
-                .collect(Collectors.joining("\n"));
     }
 
 

@@ -1,6 +1,7 @@
 package com.example.pojo;
 
 import com.example.EditOperation;
+import com.example.Main;
 import com.example.Metrics;
 import lombok.Builder;
 import lombok.Getter;
@@ -8,6 +9,7 @@ import lombok.Setter;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Getter @Setter
 @Builder
@@ -15,7 +17,7 @@ public class FileResult{
     String name;
     String oldCommit;
     String newCommit;
-    HashMap<Metrics, Integer> metrics;
+    Map<Metrics, Integer> metrics;
     List<EditOperation> editOperations;
 
     @Override

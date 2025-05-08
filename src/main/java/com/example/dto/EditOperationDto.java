@@ -13,5 +13,6 @@ public class EditOperationDto {
     private String type;
     private String fromText;
     private String toText;
+    private String method;
     private List<String> context;
 }

@@ -23,6 +23,9 @@ application {
 }
 
 dependencies {
+    implementation("fr.inria.gforge.spoon.labs:gumtree-spoon-ast-diff:1.108")
+
+
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
     implementation("com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.2")
 

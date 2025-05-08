@@ -1,5 +1,8 @@
 package com.example;
 
+import java.util.List;
+
+
 import com.example.dto.CommitPairDTO;
 import com.example.dto.FileResultDto;
 import com.example.mapper.CommitPairMapper;
@@ -8,25 +11,16 @@ import com.example.pojo.FileResult;
 import com.example.service.GitRepositoryManager;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.body.VariableDeclarator;
-import com.github.javaparser.ast.expr.VariableDeclarationExpr;
-import com.github.javaparser.ast.stmt.ExpressionStmt;
-import com.github.javaparser.ast.stmt.Statement;
 import org.apache.commons.io.FileUtils;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.SpringApplication;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.*;
 
 @SpringBootApplication
@@ -80,9 +74,9 @@ public class Main implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
 
-        manualTest();
+        //manualTest();
 
-        //presentation(repoUrls);
+        presentation(repoUrls);
 
         //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
     }
@@ -165,7 +159,7 @@ public class Main implements CommandLineRunner {
                             true
                     );
                     if (result != null) {
-                        int ted = result.getMetrics().get(Metrics.TREE_EDIT_DISTANCE);
+                        int ted = result.getMetrics().get(Metrics.EDITS);
                         if (ted > 0 && ted < 10) {
                             batchResults.add(ResultMapper.toDto(result));
                         }
