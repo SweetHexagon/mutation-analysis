@@ -87,6 +87,60 @@ public class DiffUtils {
         return meaningful;
     }
 
+    /**
+     * Counts only the "meaningful" changed lines within a single diff‐hunk (Edit).
+     * This is what GitUtils.processRepo() will call on each Edit block.
+     */
+    public static int countMeaningfulChangedLinesInBlock(
+            Repository repo,
+            RevCommit oldCommit,
+            RevCommit newCommit,
+            DiffEntry diff,
+            Edit edit) throws IOException {
+
+        // load the old/new file contents
+        RawText oldText = loadRawText(repo, oldCommit, diff.getOldPath());
+        RawText newText = loadRawText(repo, newCommit, diff.getNewPath());
+
+        int meaningful = 0;
+
+        switch (edit.getType()) {
+            case INSERT:
+            case REPLACE:
+                // count any new, non-blank, non-comment lines
+                for (int i = edit.getBeginB(); i < edit.getEndB(); i++) {
+                    String line = newText.getString(i);
+                    if (!isCommentOrBlank(line)) {
+                        // if it’s a pure inline-comment append, skip it too
+                        String oldLine = (i - edit.getBeginB() < edit.getEndA() - edit.getBeginA())
+                                ? oldText.getString(edit.getBeginA() + (i - edit.getBeginB()))
+                                : "";
+                        if (!isInlineCommentOnlyChange(oldLine, line)) {
+                            meaningful++;
+                        }
+                    }
+                }
+                break;
+
+            case DELETE:
+                // deleted lines count as “meaningful” if they weren’t blank/comment
+                for (int i = edit.getBeginA(); i < edit.getEndA(); i++) {
+                    String line = oldText.getString(i);
+                    if (!isCommentOrBlank(line)) {
+                        meaningful++;
+                    }
+                }
+                break;
+
+            default:
+                // no other edit types to consider
+                break;
+        }
+
+        return meaningful;
+    }
+
+
     /** Loads the file at a given commit into a RawText. */
     private static RawText loadRawText(Repository repo,
                                        RevCommit commit,

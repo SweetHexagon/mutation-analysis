@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
@@ -171,32 +172,34 @@ public class GitUtils {
                             .filter(d -> allowedExtensions.stream().anyMatch(ext -> d.getNewPath().endsWith(ext)))
                             // 2) only diffs where total changed lines ≤ 3
                             .filter(d -> {
-                                try {
-                                    // raw changed lines
-                                    int rawChangeCount = countChangedLines(git, d, debug);
-                                    if (debug) {
-                                        System.out.println("Raw changed lines in " + d.getNewPath() + ": " + rawChangeCount);
-                                    }
-                                    // must be between 1 and 3
-                                    if (rawChangeCount < 1 || rawChangeCount > 3) {
-                                        return false;
+                                try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
+                                    df.setRepository(repository);
+                                    df.setDiffComparator(RawTextComparator.DEFAULT);
+                                    df.setDetectRenames(true);
+
+                                    // split the diff into individual edit blocks
+                                    EditList edits = df.toFileHeader(d).toEditList();
+                                    if (edits.isEmpty()) {
+                                        return false;  // no real changes at all
                                     }
 
-                                    // meaningful changed lines
-                                    int meaningfulChangeCount = DiffUtils.countMeaningfulChangedLines(
-                                            repository, oldC, newC, d);
-                                    if (debug) {
-                                        System.out.println("Meaningful changed lines in "
-                                                + d.getNewPath() + ": " + meaningfulChangeCount);
+                                    // for every block, count the meaningful lines
+                                    for (Edit e : edits) {
+                                        int blockMeanings = DiffUtils.countMeaningfulChangedLinesInBlock(
+                                                repository, oldC, newC, d, e);
+                                        if (debug) {
+                                            System.out.println("Block " + e + " has "
+                                                    + blockMeanings + " meaningful lines");
+                                        }
+                                        if (blockMeanings != 1) {
+                                            return false;  // reject if any block deviates
+                                        }
                                     }
 
-                                    // only keep if exactly one of the changes was non-meaningful
-                                    return meaningfulChangeCount == 1;
-                                } catch (IOException e) {
-                                    if (debug) {
-                                        System.err.println("Error analyzing diff for "
-                                                + d.getNewPath() + ": " + e.getMessage());
-                                    }
+                                    // passed: every block had exactly one meaningful changed line
+                                    return true;
+                                } catch (IOException io) {
+                                    if (debug) io.printStackTrace();
                                     return false;
                                 }
                             })
@@ -324,7 +327,6 @@ public class GitUtils {
             return null;
         }
     }
-
 
 
     public static List<String> extractFileAtTwoCommits(

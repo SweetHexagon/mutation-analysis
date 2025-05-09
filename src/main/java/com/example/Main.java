@@ -74,9 +74,9 @@ public class Main implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
 
-        //manualTest();
+        manualTest();
 
-        presentation(repoUrls);
+        //presentation(repoUrls);
 
         //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
     }
@@ -159,10 +159,8 @@ public class Main implements CommandLineRunner {
                             true
                     );
                     if (result != null) {
-                        int ted = result.getMetrics().get(Metrics.EDITS);
-                        if (ted > 0 && ted < 10) {
-                            batchResults.add(ResultMapper.toDto(result));
-                        }
+                        batchResults.add(ResultMapper.toDto(result));
+
                     }
                 }
                 return pair;

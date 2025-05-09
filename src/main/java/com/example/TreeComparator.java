@@ -8,6 +8,10 @@ import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.*;
 
 import java.util.List;
+
+import spoon.Launcher;
+import spoon.reflect.CtModel;
+import spoon.reflect.code.CtComment;
 import spoon.reflect.declaration.CtMethod;
 
 
@@ -26,15 +30,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.*;
+import java.util.stream.Collectors;
+
 import com.github.javaparser.ast.Node;
+import spoon.reflect.visitor.filter.TypeFilter;
 
 public class TreeComparator {
-
-
-    private static final boolean SHOW_DEEP_CONTEXT = false;
-
-    private static final int CONTEXT_MARGIN = SHOW_DEEP_CONTEXT ? 0 : 1;
-
 
     private static final Logger log = LoggerFactory.getLogger(TreeComparator.class);
 
@@ -67,11 +68,11 @@ public class TreeComparator {
         try {
             return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
         } catch (Exception e) {
-        if (debug) {
-            System.err.println("Failed comparing files: " + e.getMessage());
-        }
-        return null;
-    } finally {
+            if (debug) {
+                System.err.println("Failed comparing files: " + e.getMessage());
+            }
+            return null;
+        } finally {
             oldFile.delete();
             newFile.delete();
         }
@@ -110,88 +111,108 @@ public class TreeComparator {
             String fileName,
             RevCommit oldCommit,
             RevCommit newCommit,
-            boolean debug) throws Exception {
-
+            boolean debug
+    ) throws Exception {
         Stopwatch sw = Stopwatch.createStarted();
+
+        // 1) Build Spoon models for old and new versions
+        Launcher oldLauncher = new Launcher();
+        oldLauncher.addInputResource(oldFile.getPath());
+        oldLauncher.buildModel();
+        CtModel oldModel = oldLauncher.getModel();
+
+        Launcher newLauncher = new Launcher();
+        newLauncher.addInputResource(newFile.getPath());
+        newLauncher.buildModel();
+        CtModel newModel = newLauncher.getModel();
+
+        // 2) Remove all comments so they don't show up in the diff
+        oldModel.getElements(new TypeFilter<>(CtComment.class))
+                .forEach(CtComment::delete);
+        newModel.getElements(new TypeFilter<>(CtComment.class))
+                .forEach(CtComment::delete);
+
+        // 3) Index methods by signature
+        List<CtMethod<?>> oldMethods = oldModel.getElements(new TypeFilter<>(CtMethod.class));
+        List<CtMethod<?>> newMethods = newModel.getElements(new TypeFilter<>(CtMethod.class));
+        Map<String, CtMethod<?>> oldMap = oldMethods.stream()
+                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
+        Map<String, CtMethod<?>> newMap = newMethods.stream()
+                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
+
+        // 4) Prepare comparator and accumulator
         AstComparator comp = new AstComparator();
-        Diff diff = comp.compare(oldFile, newFile);
-        sw.stop();
-
-        if (debug) {
-            System.out.printf("AST diff for %s took %d ms%n", fileName, sw.elapsed(TimeUnit.MILLISECONDS));
-        }
-
-        List<Operation> ops = diff.getRootOperations();
         List<EditOperation> allOps = new ArrayList<>();
 
-        for (Operation op : ops) {
-            // 1) normalize the action name
-            String raw = op.getAction().getName();
-            String base = raw.contains("-") ? raw.substring(0, raw.indexOf('-')) : raw;
-            EditOperation.Type type;
-            try {
-                type = EditOperation.Type.valueOf(base.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                if (debug) System.err.println("Skipping unrecognized action: " + raw);
-                continue;
+        // 5) For each method signature (including added or removed)
+        Set<String> allSignatures = new HashSet<>();
+        allSignatures.addAll(oldMap.keySet());
+        allSignatures.addAll(newMap.keySet());
+
+        for (String sig : allSignatures) {
+            CtMethod<?> oldM = oldMap.get(sig);
+            CtMethod<?> newM = newMap.get(sig);
+            String methodName = (newM != null ? newM : oldM).getSimpleName();
+
+            if (debug) {
+                System.out.printf("  – diffing method %s%n", sig);
             }
 
-            CtElement src = null, dst = null;
+            // Clone so comparator always has two inputs
+            CtElement left  = oldM != null ? oldM.clone() : newM.clone();
+            CtElement right = newM != null ? newM.clone() : oldM.clone();
 
-            switch (op) {
-                case InsertOperation ins ->
-                        dst = ins.getNode();
-                case DeleteOperation del ->
-                        src = del.getNode();
-                case UpdateOperation upd -> {
-                    src = upd.getSrcNode();
-                    dst = upd.getDstNode();
+            Diff diff = comp.compare(left, right);
+
+            // 6) Translate operations, tagging with methodName
+            for (Operation op : diff.getRootOperations()) {
+                String raw = op.getAction().getName();
+                String base = raw.contains("-") ? raw.substring(0, raw.indexOf('-')) : raw;
+                EditOperation.Type type;
+                try {
+                    type = EditOperation.Type.valueOf(base.toUpperCase());
+                } catch (IllegalArgumentException ex) {
+                    if (debug) System.err.println("    Skipping unrecognized: " + raw);
+                    continue;
                 }
-                case MoveOperation mov -> {
-                    src = mov.getSrcNode();
-                    dst = mov.getDstNode();
+
+                CtElement src = null, dst = null;
+                switch (op) {
+                    case InsertOperation ins -> dst = ins.getNode();
+                    case DeleteOperation del -> src = del.getNode();
+                    case UpdateOperation upd -> { src = upd.getSrcNode(); dst = upd.getDstNode(); }
+                    case MoveOperation mov   -> { src = mov.getSrcNode(); dst = mov.getDstNode(); }
+                    default -> throw new IllegalArgumentException("Unknown edit: " + type);
                 }
-                default -> throw new IllegalArgumentException("Unknown edit type: " + type);
+
+                Node jpSrc = (src != null)
+                        ? TreeUtils.findJavaParserNode(oldFile, src).orElse(null)
+                        : null;
+                Node jpDst = (dst != null)
+                        ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null)
+                        : null;
+
+                CtElement ctx = dst != null ? dst : src;
+                List<String> contextList = (ctx != null)
+                        ? TreeUtils.extractCtElementContext(
+                        dst != null ? newFile : oldFile, ctx, 1
+                )
+                        : List.of();
+
+                allOps.add(new EditOperation(
+                        type, src, dst, jpSrc, jpDst, methodName, contextList
+                ));
             }
-
-            Node javaParserSrcNode = (src  != null ? TreeUtils.findJavaParserNode(oldFile,  src).orElse(null) : null);
-            Node javaParserDstNode = (dst  != null ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null) : null);
-
-            String methodName = null;
-            CtElement contextCt = (dst != null ? dst : src);
-
-            if (contextCt != null) {
-                CtElement parent = contextCt;
-                while (parent != null && !(parent instanceof CtMethod<?>)) {
-                    parent = parent.getParent();
-                }
-                if (parent != null) {
-                    methodName = ((CtMethod<?>) parent).getSimpleName();
-                }
-            }
-
-            CtElement contextElem = (dst != null ? dst : src);
-
-            List<String> contextList = List.of();
-            if (contextElem != null) {
-                File fileForContext = (dst != null ? newFile : oldFile);
-                contextList = TreeUtils.extractCtElementContext(fileForContext, contextElem, 1);
-            }
-
-            EditOperation eop = new EditOperation(
-                    type,
-                    src,
-                    dst,
-                    javaParserSrcNode,
-                    javaParserDstNode,
-                    methodName,
-                    contextList
-            );
-            allOps.add(eop);
         }
 
-        Map<Metrics, Integer> metrics = Map.of(Metrics.EDITS, ops.size());
+        sw.stop();
+        if (debug) {
+            System.out.printf("AST diff for %s (per-method, comments ignored) took %d ms%n",
+                    fileName, sw.elapsed(TimeUnit.MILLISECONDS));
+        }
 
+        // 7) Single FileResult with every edit (comments now filtered out)
+        Map<Metrics, Integer> metrics = Map.of(Metrics.EDITS, allOps.size());
         return createFileResult(
                 fileName,
                 oldFile.getAbsolutePath(),
@@ -202,7 +223,6 @@ public class TreeComparator {
                 newCommit != null ? newCommit.getName() : null
         );
     }
-
 
 
 
@@ -217,9 +237,6 @@ public class TreeComparator {
                 .newCommit(newCommit)
                 .build();
     }
-
-
-
 
 
     private static String extractName(String oldFilePath, String newFilePath) {
