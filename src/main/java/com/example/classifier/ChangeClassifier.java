@@ -33,7 +33,22 @@ public class ChangeClassifier {
             new ExperimentalNakedReceiverPattern(),
             new ExperimentalSwitchPattern(),
             new FalseReturnsPattern(),
-            new IncrementsPattern()
+            new IncrementsPattern(),
+            new InlineConstantPattern(),
+            new InvertNegativesPattern(),
+            new MathPattern(),
+            new NegateConditionalsPattern(),
+            new NonVoidMethodCallPattern(),
+            new NullReturnsPattern(),
+            new OBBNPattern(),
+            new PrimitiveReturnsPattern(),
+            new RemoveConditionalsPattern(),
+            new RemoveIncrementsPattern(),
+            new ReturnValuesPattern(),
+            new RORPattern(),
+            new TrueReturnsPattern(),
+            new UOIPattern(),
+            new VoidMethodCallRemovalPattern()
     );
 
 

@@ -1,19 +1,15 @@
-public class INCREMENTS {
-    public int postIncrement(int i) {
-        return i++;
-    } // original: i++
+public class VOID_METHOD_CALLS {
+    private int count = 0;
 
-    public int postDecrement(int i) {
-        return i--;
-    } // original: i--
+    public void increment() {
+        count++;
+    }
 
-    public int addAssignment(int i) {
-        i += 1;
-        return i;
-    } // original: +=1
+    public int getCount() {
+        return count;
+    }
 
-    public int subtractAssignment(int i) {
-        i -= 1;
-        return i;
-    } // original: -=1
+    public void test() {
+        increment();
+    }
 }
