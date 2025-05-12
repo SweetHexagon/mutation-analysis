@@ -1,14 +1,20 @@
 package com.example;
 
 
+import com.example.classifier.ChangeClassifier;
 import com.example.util.TreeUtils;
-import com.github.javaparser.Range;
+import com.github.gumtreediff.matchers.CompositeMatchers;
+import com.github.gumtreediff.matchers.ConfigurationOptions;
+import com.github.gumtreediff.matchers.GumtreeProperties;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
+import gumtree.spoon.diff.DiffConfiguration;
 import gumtree.spoon.diff.operations.*;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import spoon.reflect.code.CtComment;
@@ -25,9 +31,7 @@ import org.slf4j.LoggerFactory;
 import spoon.reflect.declaration.CtElement;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+
 import java.util.concurrent.TimeUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -35,15 +39,23 @@ import java.util.stream.Collectors;
 import com.github.javaparser.ast.Node;
 import spoon.reflect.visitor.filter.TypeFilter;
 
+@Component
 public class TreeComparator {
 
-    private static final Logger log = LoggerFactory.getLogger(TreeComparator.class);
+    private final ChangeClassifier changeClassifier;
 
-    public static FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit, String fileName) {
+    @Autowired
+    public TreeComparator(ChangeClassifier changeClassifier) {
+        this.changeClassifier = changeClassifier;
+    }
+    
+    private  final Logger log = LoggerFactory.getLogger(TreeComparator.class);
+
+    public  FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit, String fileName) {
         return compareFileInTwoCommits(localPath, oldCommit, newCommit, fileName, false);
     }
 
-    public static FileResult compareFileInTwoCommits(
+    public  FileResult compareFileInTwoCommits(
             String localPath,
             RevCommit oldCommit,
             RevCommit newCommit,
@@ -78,11 +90,11 @@ public class TreeComparator {
         }
     }
 
-    public static FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
+    public  FileResult compareTwoFilePaths(String oldFilePath, String newFilePath) {
         return compareTwoFilePaths(oldFilePath, newFilePath, false);
     }
 
-    public static FileResult compareTwoFilePaths(
+    public  FileResult compareTwoFilePaths(
             String oldFilePath,
             String newFilePath,
             boolean debug) {
@@ -105,7 +117,7 @@ public class TreeComparator {
         }
     }
 
-    private static FileResult compareFiles(
+    private  FileResult compareFiles(
             File oldFile,
             File newFile,
             String fileName,
@@ -202,14 +214,37 @@ public class TreeComparator {
                 allOps.add(new EditOperation(
                         type, src, dst, jpSrc, jpDst, methodName, contextList
                 ));
+
+
+
+            }
+
+            List<Operation> ops = diff.getRootOperations();
+
+            if (debug) {
+
+                ops.forEach(op -> System.out.println(" * "
+                        + op.getAction().getName()
+                        + " -> node: " + op.getNode().getClass().getSimpleName()));
+
+                List<String> found = changeClassifier.classify(ops);
+                if (found.isEmpty()) {
+                    System.out.println("   -> No pattern found");
+                } else {
+                    System.out.println("   -> Patterns found:");
+                    found.forEach(p -> System.out.println("      - " + p));
+                }
             }
         }
-
         sw.stop();
+
+
+
         if (debug) {
-            System.out.printf("AST diff for %s (per-method, comments ignored) took %d ms%n",
-                    fileName, sw.elapsed(TimeUnit.MILLISECONDS));
+            System.out.printf("AST diff for %s took %d ms and yielded %d ops:%n",
+                    fileName, sw.elapsed(TimeUnit.MILLISECONDS), allOps.size());
         }
+
 
         // 7) Single FileResult with every edit (comments now filtered out)
         Map<Metrics, Integer> metrics = Map.of(Metrics.EDITS, allOps.size());
@@ -226,7 +261,7 @@ public class TreeComparator {
 
 
 
-    private static FileResult createFileResult(String fileName, String original, String changed,
+    private  FileResult createFileResult(String fileName, String original, String changed,
                                                List<EditOperation> ops, Map<Metrics, Integer> metrics,
                                                String oldCommit, String newCommit) {
         return FileResult.builder()
@@ -239,7 +274,7 @@ public class TreeComparator {
     }
 
 
-    private static String extractName(String oldFilePath, String newFilePath) {
+    private  String extractName(String oldFilePath, String newFilePath) {
         if (oldFilePath == null || newFilePath == null) {
             return "Both file paths must be provided.";
         }
@@ -260,7 +295,7 @@ public class TreeComparator {
         return suffix.replace('_', '/');
     }
 
-    private static String commonSuffix(String a, String b) {
+    private  String commonSuffix(String a, String b) {
         if (a == null || b == null) return "";
 
         int aLen = a.length();

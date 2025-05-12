@@ -26,20 +26,24 @@ import java.util.concurrent.*;
 @SpringBootApplication
 public class Main implements CommandLineRunner {
     private final GitRepositoryManager repoManager;
+    private final TreeComparator      treeComparator;  // ← inject your newly-made bean
 
-    public Main(GitRepositoryManager repoManager) {
-        this.repoManager = repoManager;
+    public Main(GitRepositoryManager repoManager,
+                TreeComparator treeComparator) {
+        this.repoManager     = repoManager;
+        this.treeComparator  = treeComparator;
     }
 
-    static String localPath = "repositories";
 
-    private static final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
+     String localPath = "repositories";
 
-    static final int BATCH_SIZE = 500;
+    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
+
+     final int BATCH_SIZE = 500;
 
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
-    static List<String> repoUrls = List.of(
+     List<String> repoUrls = List.of(
             "https://github.com/SweetHexagon/pitest-mutators"
             ////"https://github.com/Snailclimb/JavaGuide",            // 5 800 commits
             ////"https://github.com/krahets/hello-algo",               // small
@@ -64,7 +68,7 @@ public class Main implements CommandLineRunner {
     );
 
 
-    static List<String> extensions = List.of(
+     List<String> extensions = List.of(
             ".java");
 
     public static void main(String[] args) {
@@ -141,7 +145,7 @@ public class Main implements CommandLineRunner {
         }
     }
 
-    private static void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
+    private  void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
         ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
         CompletionService<CommitPairWithFiles> cs = new ExecutorCompletionService<>(exec);
 
@@ -151,7 +155,7 @@ public class Main implements CommandLineRunner {
         for (CommitPairWithFiles pair : batch) {
             cs.submit(() -> {
                 for (String file : pair.changedFiles()) {
-                    FileResult result = TreeComparator.compareFileInTwoCommits(
+                    FileResult result = treeComparator.compareFileInTwoCommits(
                             repoDir,
                             pair.oldCommit(),
                             pair.newCommit(),
@@ -187,7 +191,7 @@ public class Main implements CommandLineRunner {
         System.gc();
     }
 
-    private static void printProgressBar(int current, int total) {
+    private  void printProgressBar(int current, int total) {
         int width = 50;
         int filled = (int)(width * current / (double)total);
         StringBuilder b = new StringBuilder("\r[");
@@ -200,7 +204,7 @@ public class Main implements CommandLineRunner {
         System.out.flush();
     }
 
-    public static void manualTest() {
+    public  void manualTest() {
         String repoName = "elasticsearch";
         String oldSha = "0a599f924bf91e22ec8fa2a3d327bf224f8a5f25";
         String newSha = "7abbaf0a24c970021992bd909236cf563d28ebc4";
@@ -218,7 +222,7 @@ public class Main implements CommandLineRunner {
             //printFileContents("Old File", oldFilePath);
             //printFileContents("New File", newFilePath);
 
-            FileResult result = TreeComparator.compareTwoFilePaths(extractedPaths.get(0), extractedPaths.get(1), true);
+            FileResult result = treeComparator.compareTwoFilePaths(extractedPaths.get(0), extractedPaths.get(1), true);
 
             if (result != null) {
                 System.out.println(result);
@@ -230,7 +234,7 @@ public class Main implements CommandLineRunner {
         }
     }
 
-    public static void cleanUp(String path) {
+    public  void cleanUp(String path) {
         try {
             File dir = new File(path);
             if (dir.exists() && dir.isDirectory()) {
