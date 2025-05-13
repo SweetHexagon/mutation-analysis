@@ -1,79 +1,71 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.DeleteOperation;
-import gumtree.spoon.diff.operations.InsertOperation;
-import gumtree.spoon.diff.operations.MoveOperation;
-import gumtree.spoon.diff.operations.UpdateOperation;
-import gumtree.spoon.diff.operations.Operation;
+import gumtree.spoon.diff.operations.*;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtExpression;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ExperimentalNakedReceiverPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        return matchesUpdate(ops)
-                || matchesDeleteInsertOrMove(ops);
-    }
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
 
-    /** catches a single UpdateOperation:  call(x) → x  */
-    private boolean matchesUpdate(List<Operation> ops) {
+        // Case 1: single UpdateOperation (call(x) → x)
         for (Operation op : ops) {
             if (op instanceof UpdateOperation upd) {
                 CtElement src = upd.getSrcNode();
                 CtElement dst = upd.getDstNode();
                 if (src instanceof CtInvocation<?> inv
                         && dst instanceof CtExpression<?> expr) {
-                    // if the new node’s source‐string equals the invocation’s receiver
                     CtExpression<?> target = inv.getTarget();
-                    if (target != null
-                            && expr.toString().equals(target.toString())) {
-                        return true;
+                    if (target != null && expr.toString().equals(target.toString())) {
+                        matched.add(upd);
+                        return matched;
                     }
                 }
             }
         }
-        return false;
-    }
 
-    /**
-     * catches the split‐case where the CtInvocation is deleted
-     * and its receiver is either inserted or moved back into place
-     */
-    private boolean matchesDeleteInsertOrMove(List<Operation> ops) {
-        CtInvocation<?> deletedInv = null;
-        CtExpression<?>  insertedExpr = null;
-
+        // Case 2: delete the invocation, then insert or move its receiver
+        DeleteOperation delOp = null;
+        Operation insOrMvOp = null;
         for (Operation op : ops) {
-            if (op instanceof DeleteOperation del
-                    && del.getNode() instanceof CtInvocation<?> inv) {
-                deletedInv = inv;
-            }
-            else if (op instanceof InsertOperation ins
-                    && ins.getNode() instanceof CtExpression<?> expr) {
-                insertedExpr = expr;
-            }
-            else if (op instanceof MoveOperation mv
-                    && mv.getNode() instanceof CtExpression<?> expr) {
-                insertedExpr = expr;
-            }
-            if (deletedInv != null && insertedExpr != null) {
-                break;
+            if (delOp == null && op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtInvocation<?>) {
+                delOp = del;
+                matched.add(delOp);
+            } else if (delOp != null
+                    && (op instanceof InsertOperation || op instanceof MoveOperation)) {
+                CtElement node = (op instanceof InsertOperation ins
+                        ? ins.getNode()
+                        : ((MoveOperation) op).getNode());
+                if (node instanceof CtExpression<?> expr) {
+                    insOrMvOp = op;
+                    matched.add(insOrMvOp);
+                    break;
+                }
             }
         }
 
-        if (deletedInv != null && insertedExpr != null) {
+        // Verify that the inserted/moved expression matches the deleted invocation's receiver
+        if (delOp != null && insOrMvOp != null) {
+            CtInvocation<?> deletedInv = (CtInvocation<?>) delOp.getNode();
+            CtExpression<?> insertedExpr = (CtExpression<?>)
+                    (insOrMvOp instanceof InsertOperation
+                            ? ((InsertOperation) insOrMvOp).getNode()
+                            : ((MoveOperation) insOrMvOp).getNode());
             CtExpression<?> target = deletedInv.getTarget();
-            if (target != null
-                    && insertedExpr.toString().equals(target.toString())) {
-                return true;
+            if (target != null && insertedExpr.toString().equals(target.toString())) {
+                return matched;
             }
         }
-        return false;
+
+        return List.of();
     }
 
     @Override

@@ -1,44 +1,56 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
+import gumtree.spoon.diff.operations.DeleteOperation;
+import gumtree.spoon.diff.operations.InsertOperation;
+import gumtree.spoon.diff.operations.Operation;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtLiteral;
-import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class NonVoidMethodCallPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        CtInvocation<?> deletedCall = null;
-        CtLiteral<?> insertedLiteral = null;
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
+        DeleteOperation delOp = null;
+        InsertOperation insOp = null;
 
+        // 1) find the deleted method call
         for (Operation op : ops) {
-            if (op instanceof DeleteOperation del) {
-                if (del.getNode() instanceof CtInvocation<?> invocation) {
-                    deletedCall = invocation;
-                }
-            } else if (op instanceof InsertOperation ins) {
-                if (ins.getNode() instanceof CtLiteral<?> literal) {
-                    insertedLiteral = literal;
-                }
+            if (op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtInvocation<?>) {
+                delOp = del;
+                matched.add(delOp);
+                break;
+            }
+        }
+        if (delOp == null) {
+            return List.of();
+        }
+
+        // 2) find the inserted default-value literal
+        for (Operation op : ops) {
+            if (op instanceof InsertOperation ins
+                    && ins.getNode() instanceof CtLiteral<?> lit
+                    && isJavaDefaultValue(lit.getValue())) {
+                insOp = ins;
+                matched.add(insOp);
+                break;
             }
         }
 
-        if (deletedCall == null || insertedLiteral == null) {
-            return false;
-        }
-
-        // Optional: confirm the literal value is a known Java default
-        Object defaultValue = insertedLiteral.getValue();
-        return isJavaDefaultValue(defaultValue);
+        // only return if both parts were found
+        return (insOp != null) ? matched : List.of();
     }
 
     private boolean isJavaDefaultValue(Object value) {
-        return value == null || value.equals(0)
-                || value.equals(0.0) || value.equals(0.0f)
+        return value == null
+                || value.equals(0)
+                || value.equals(0.0)
+                || value.equals(0.0f)
                 || value.equals(false)
                 || value.equals('\u0000');
     }

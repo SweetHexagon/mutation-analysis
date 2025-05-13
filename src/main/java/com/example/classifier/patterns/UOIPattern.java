@@ -7,40 +7,54 @@ import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.code.UnaryOperatorKind;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class UOIPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        CtVariableRead<?> deletedVar = null;
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        CtVariableRead<?> deletedVar     = null;
         CtUnaryOperator<?> insertedUnary = null;
+        DeleteOperation delOp            = null;
+        InsertOperation insOp            = null;
 
         for (Operation op : ops) {
-            if (op instanceof DeleteOperation del && del.getNode() instanceof CtVariableRead<?> vr) {
+            if (deletedVar == null && op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtVariableRead<?> vr) {
                 deletedVar = vr;
+                delOp = del;
             }
-
-            if (op instanceof InsertOperation ins && ins.getNode() instanceof CtUnaryOperator<?> unary) {
-                UnaryOperatorKind kind = unary.getKind();
-                if (isUoiKind(kind)) {
-                    insertedUnary = unary;
-                }
+            else if (insertedUnary == null && op instanceof InsertOperation ins
+                    && ins.getNode() instanceof CtUnaryOperator<?> unary
+                    && isUoiKind(unary.getKind())) {
+                insertedUnary = unary;
+                insOp = ins;
+            }
+            if (deletedVar != null && insertedUnary != null) {
+                break;
             }
         }
 
-        // Confirm the inserted unary operator wraps the deleted variable
-        return deletedVar != null &&
-                insertedUnary != null &&
-                insertedUnary.getOperand() != null &&
-                insertedUnary.getOperand().toString().equals(deletedVar.toString());
+        // Confirm we found both parts and that the unary wraps the deleted variable
+        if (deletedVar != null
+                && insertedUnary != null
+                && insertedUnary.getOperand() != null
+                && insertedUnary.getOperand().toString().equals(deletedVar.toString())) {
+            List<Operation> matched = new ArrayList<>();
+            matched.add(delOp);
+            matched.add(insOp);
+            return matched;
+        }
+
+        return List.of();
     }
 
     private boolean isUoiKind(UnaryOperatorKind kind) {
-        return kind == UnaryOperatorKind.PREINC ||
-                kind == UnaryOperatorKind.POSTINC ||
-                kind == UnaryOperatorKind.PREDEC ||
-                kind == UnaryOperatorKind.POSTDEC;
+        return kind == UnaryOperatorKind.PREINC
+                || kind == UnaryOperatorKind.POSTINC
+                || kind == UnaryOperatorKind.PREDEC
+                || kind == UnaryOperatorKind.POSTDEC;
     }
 
     @Override

@@ -7,6 +7,7 @@ import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,48 +19,31 @@ public class AORPattern implements ChangeClassifier.MutationPattern {
      * Applies only to: PLUS, MINUS, MUL, DIV, MOD
      */
     private static final Map<BinaryOperatorKind, Set<BinaryOperatorKind>> AOR_MAP = Map.of(
-            BinaryOperatorKind.PLUS, Set.of(BinaryOperatorKind.MINUS,
-                    BinaryOperatorKind.MUL,
-                    BinaryOperatorKind.DIV,
-                    BinaryOperatorKind.MOD),
-            BinaryOperatorKind.MINUS, Set.of(BinaryOperatorKind.PLUS,
-                    BinaryOperatorKind.MUL,
-                    BinaryOperatorKind.DIV,
-                    BinaryOperatorKind.MOD),
-            BinaryOperatorKind.MUL, Set.of(BinaryOperatorKind.PLUS,
-                    BinaryOperatorKind.MINUS,
-                    BinaryOperatorKind.DIV,
-                    BinaryOperatorKind.MOD),
-            BinaryOperatorKind.DIV, Set.of(BinaryOperatorKind.PLUS,
-                    BinaryOperatorKind.MINUS,
-                    BinaryOperatorKind.MUL,
-                    BinaryOperatorKind.MOD),
-            BinaryOperatorKind.MOD, Set.of(BinaryOperatorKind.PLUS,
-                    BinaryOperatorKind.MINUS,
-                    BinaryOperatorKind.MUL,
-                    BinaryOperatorKind.DIV)
+            BinaryOperatorKind.PLUS,  Set.of(BinaryOperatorKind.MINUS, BinaryOperatorKind.MUL, BinaryOperatorKind.DIV, BinaryOperatorKind.MOD),
+            BinaryOperatorKind.MINUS, Set.of(BinaryOperatorKind.PLUS,  BinaryOperatorKind.MUL, BinaryOperatorKind.DIV, BinaryOperatorKind.MOD),
+            BinaryOperatorKind.MUL,   Set.of(BinaryOperatorKind.PLUS,  BinaryOperatorKind.MINUS, BinaryOperatorKind.DIV, BinaryOperatorKind.MOD),
+            BinaryOperatorKind.DIV,   Set.of(BinaryOperatorKind.PLUS,  BinaryOperatorKind.MINUS, BinaryOperatorKind.MUL, BinaryOperatorKind.MOD),
+            BinaryOperatorKind.MOD,   Set.of(BinaryOperatorKind.PLUS,  BinaryOperatorKind.MINUS, BinaryOperatorKind.MUL, BinaryOperatorKind.DIV)
     );
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
             if (op instanceof UpdateOperation upd) {
                 CtElement src = upd.getSrcNode();
                 CtElement dst = upd.getDstNode();
-
                 if (src instanceof CtBinaryOperator<?> binSrc
                         && dst instanceof CtBinaryOperator<?> binDst) {
-
                     BinaryOperatorKind from = binSrc.getKind();
-                    BinaryOperatorKind to = binDst.getKind();
-
+                    BinaryOperatorKind to   = binDst.getKind();
                     if (AOR_MAP.containsKey(from) && AOR_MAP.get(from).contains(to)) {
-                        return true;
+                        matched.add(upd);
                     }
                 }
             }
         }
-        return false;
+        return matched;
     }
 
     @Override

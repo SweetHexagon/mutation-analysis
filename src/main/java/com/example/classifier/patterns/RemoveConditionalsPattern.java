@@ -1,33 +1,44 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
+import gumtree.spoon.diff.operations.DeleteOperation;
+import gumtree.spoon.diff.operations.InsertOperation;
+import gumtree.spoon.diff.operations.Operation;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtLiteral;
-import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class RemoveConditionalsPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        boolean deletedCondition = false;
-        boolean insertedLiteral = false;
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
+        DeleteOperation delOp = null;
+        InsertOperation insOp = null;
 
         for (Operation op : ops) {
-            if (op instanceof DeleteOperation del && del.getNode() instanceof CtBinaryOperator<?>) {
-                deletedCondition = true;
+            if (delOp == null && op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtBinaryOperator<?>) {
+                delOp = del;
+                matched.add(delOp);
             }
-
-            if (op instanceof InsertOperation ins && ins.getNode() instanceof CtLiteral<?> lit) {
-                if (lit.getValue() instanceof Boolean) {
-                    insertedLiteral = true;
-                }
+            if (insOp == null && op instanceof InsertOperation ins
+                    && ins.getNode() instanceof CtLiteral<?> lit
+                    && lit.getValue() instanceof Boolean) {
+                insOp = ins;
+                matched.add(insOp);
+            }
+            if (delOp != null && insOp != null) {
+                break;
             }
         }
 
-        return deletedCondition && insertedLiteral;
+        if (delOp != null && insOp != null) {
+            return matched;
+        }
+        return List.of();
     }
 
     @Override

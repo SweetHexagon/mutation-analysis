@@ -1,13 +1,9 @@
-public class VOID_METHOD_CALLS {
-    private int count = 0;
+import java.util.*;
 
-    public void increment() {
-        count++;
-    }
+public class EMPTY_RETURNS {
 
-    public int getCount() {
-        return count;
-    }
+    public Collection<String> returnCollection() {
+        return Collections.emptyList();
+    } // -> emptyList()
 
-    public void test() { /* void method call removed */ }                // remove void method call
 }

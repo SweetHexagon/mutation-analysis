@@ -1,67 +1,75 @@
 package com.example.classifier.patterns;
+
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
+import gumtree.spoon.diff.operations.DeleteOperation;
+import gumtree.spoon.diff.operations.InsertOperation;
+import gumtree.spoon.diff.operations.MoveOperation;
+import gumtree.spoon.diff.operations.Operation;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.declaration.CtParameter;
 import spoon.reflect.reference.CtTypeReference;
-import spoon.reflect.reference.CtVariableReference;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ExperimentalArgumentPropagationPattern
         implements ChangeClassifier.MutationPattern {
 
-    private boolean matchesArgumentPropagation(List<Operation> ops) {
-        // 1) did we delete the original call?
-        boolean sawDeleteCall = ops.stream().anyMatch(op ->
-                op instanceof DeleteOperation del &&
-                        del.getNode() instanceof spoon.reflect.code.CtInvocation<?>);
 
-        if (!sawDeleteCall) {
-            return false;
+    @Override
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
+
+        // 1) collect the delete of the invocation
+        for (Operation op : ops) {
+            if (op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtInvocation<?>) {
+                matched.add(op);
+            }
+        }
+        if (matched.isEmpty()) {
+            return List.of();
         }
 
-        // 2) did we insert or move a parameter‐read of the correct type?
-        return ops.stream().anyMatch(op -> {
-            CtVariableRead<?> varRead = null;
-
-            if (op instanceof InsertOperation ins
-                    && ins.getNode() instanceof CtVariableRead<?> ir) {
-                varRead = ir;
+        // 2) find the inserted or moved parameter read that matches
+        for (Operation op : ops) {
+            CtVariableRead<?> varRead = extractVarRead(op);
+            if (varRead == null) {
+                continue;
             }
-            else if (op instanceof MoveOperation mv
-                    && mv.getNode() instanceof CtVariableRead<?> mr) {
-                varRead = mr;
-            }
-
-            if (varRead == null) return false;
-
-            // ensure it's a method‐parameter, not a local var
             if (!(varRead.getVariable().getDeclaration() instanceof CtParameter<?>)) {
-                return false;
+                continue;
             }
-
-            // 3) check that the parameter's type == enclosing method's return type
             CtExecutable<?> parentExec = varRead.getParent(CtExecutable.class);
             if (parentExec == null) {
-                return false;
+                continue;
             }
             CtTypeReference<?> returnType = parentExec.getType();
             CtTypeReference<?> paramType  = varRead.getType();
+            if (returnType != null && returnType.equals(paramType)) {
+                matched.add(op);
+                break;
+            }
+        }
 
-            return returnType != null
-                    && returnType.equals(paramType);
-        });
+        // only return if we have both a delete of the call and a var‐read op
+        return (matched.size() >= 2) ? matched : List.of();
     }
 
-    @Override
-    public boolean matches(List<Operation> ops) {
-        return matchesArgumentPropagation(ops);
+    private CtVariableRead<?> extractVarRead(Operation op) {
+        CtElement node = null;
+        if (op instanceof InsertOperation ins) {
+            node = ins.getNode();
+        } else if (op instanceof MoveOperation mv) {
+            node = mv.getNode();
+        }
+        return (node instanceof CtVariableRead<?> vr)
+                ? vr
+                : null;
     }
-
 
     @Override
     public String description() {

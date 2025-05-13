@@ -6,14 +6,18 @@ import gumtree.spoon.diff.operations.UpdateOperation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class InlineConstantPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
-            if (!(op instanceof UpdateOperation update)) continue;
+            if (!(op instanceof UpdateOperation update)) {
+                continue;
+            }
 
             CtElement src = update.getSrcNode();
             CtElement dst = update.getDstNode();
@@ -22,26 +26,34 @@ public class InlineConstantPattern implements ChangeClassifier.MutationPattern {
                 Object oldVal = before.getValue();
                 Object newVal = after.getValue();
 
+                // boolean flip
                 if (oldVal instanceof Boolean && newVal instanceof Boolean) {
-                    if (!oldVal.equals(newVal)) return true;
+                    if (!oldVal.equals(newVal)) {
+                        matched.add(update);
+                        continue;
+                    }
                 }
 
+                // numeric constant change
                 if (isNumeric(oldVal) && isNumeric(newVal)) {
                     double oldNum = ((Number) oldVal).doubleValue();
                     double newNum = ((Number) newVal).doubleValue();
-
-                    // This can be tuned; we use approximate equality to allow 42 → 0, 3.14 → 0.0, etc.
-                    if (oldNum != newNum) return true;
+                    if (Double.compare(oldNum, newNum) != 0) {
+                        matched.add(update);
+                    }
                 }
             }
         }
-
-        return false;
+        return matched;
     }
 
     private boolean isNumeric(Object o) {
-        return o instanceof Byte || o instanceof Short || o instanceof Integer ||
-                o instanceof Long || o instanceof Float || o instanceof Double;
+        return o instanceof Byte
+                || o instanceof Short
+                || o instanceof Integer
+                || o instanceof Long
+                || o instanceof Float
+                || o instanceof Double;
     }
 
     @Override

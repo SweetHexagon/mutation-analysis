@@ -38,11 +38,7 @@ public class ResultMapper {
                 .name(fileResult.getName())
                 .oldCommit(fileResult.getOldCommit())
                 .newCommit(fileResult.getNewCommit())
-                .metrics(fileResult.getMetrics().entrySet().stream()
-                        .collect(Collectors.toMap(
-                                e -> e.getKey().name(),
-                                Map.Entry::getValue
-                        )))
+                //.metrics(fileResult.getMetrics().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,Map.Entry::getValue)))
                 .editOperations(fileResult.getEditOperations().stream()
                         .map(ResultMapper::toDto)
                         .collect(Collectors.toList()))

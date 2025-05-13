@@ -8,32 +8,44 @@ import spoon.reflect.code.CtConstructorCall;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ConstructorCallsPattern implements MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
         CtConstructorCall<?> deletedCtor = null;
-        CtLiteral<?>        insertedNull = null;
+        CtLiteral<?> insertedNull = null;
+        DeleteOperation delOp = null;
+        InsertOperation insOp = null;
+        List<Operation> matched = new ArrayList<>();
 
         for (Operation op : ops) {
-            if (op instanceof DeleteOperation del) {
-                CtElement node = del.getNode();
-                if (node instanceof CtConstructorCall<?>) {
-                    deletedCtor = (CtConstructorCall<?>) node;
-                }
+            if (deletedCtor == null
+                    && op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtConstructorCall<?>) {
+                deletedCtor = (CtConstructorCall<?>) del.getNode();
+                delOp = del;
+                matched.add(delOp);
             }
-            if (op instanceof InsertOperation ins) {
-                CtElement node = ins.getNode();
-                if (node instanceof CtLiteral<?> lit
-                        && lit.getValue() == null) {
-                    insertedNull = lit;
-                }
+            if (insertedNull == null
+                    && op instanceof InsertOperation ins
+                    && ins.getNode() instanceof CtLiteral<?> lit
+                    && lit.getValue() == null) {
+                insertedNull = lit;
+                insOp = ins;
+                matched.add(insOp);
+            }
+            if (deletedCtor != null && insertedNull != null) {
+                break;
             }
         }
 
-        return deletedCtor != null && insertedNull != null;
+        if (deletedCtor != null && insertedNull != null) {
+            return matched;
+        }
+        return List.of();
     }
 
     @Override

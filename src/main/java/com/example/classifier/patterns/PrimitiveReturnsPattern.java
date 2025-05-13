@@ -1,32 +1,35 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
+import gumtree.spoon.diff.operations.Operation;
+import gumtree.spoon.diff.operations.UpdateOperation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class PrimitiveReturnsPattern implements ChangeClassifier.MutationPattern {
 
-    @Override
-    public boolean matches(List<Operation> ops) {
-        for (Operation op : ops) {
-            if (!(op instanceof UpdateOperation update)) continue;
 
+    @Override
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
+        for (Operation op : ops) {
+            if (!(op instanceof UpdateOperation update)) {
+                continue;
+            }
             CtElement src = update.getSrcNode();
             CtElement dst = update.getDstNode();
-
             if (src instanceof CtLiteral<?> oldLit && dst instanceof CtLiteral<?> newLit) {
                 Object oldVal = oldLit.getValue();
                 Object newVal = newLit.getValue();
-
                 if (isPrimitive(oldVal) && isZeroValue(newVal) && !isZeroValue(oldVal)) {
-                    return true;
+                    matched.add(update);
                 }
             }
         }
-        return false;
+        return matched;
     }
 
     private boolean isPrimitive(Object value) {

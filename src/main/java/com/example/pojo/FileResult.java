@@ -1,13 +1,10 @@
 package com.example.pojo;
 
 import com.example.EditOperation;
-import com.example.Main;
-import com.example.Metrics;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,7 +14,7 @@ public class FileResult{
     String name;
     String oldCommit;
     String newCommit;
-    Map<Metrics, Integer> metrics;
+    Map<String, Integer> metrics;
     List<EditOperation> editOperations;
 
     @Override
@@ -33,10 +30,10 @@ public class FileResult{
             }
         }
 
-        result.append("Metrics: ").append("\n");
-        for(Metrics metricsKey : metrics.keySet()){
-            result.append("  ").append(metricsKey.toString()).append(": ").append(metrics.get(metricsKey)).append("\n");
-        }
+        //result.append("Metrics: ").append("\n");
+        //for(var metricsKey : metrics.keySet()){
+        //    result.append("  ").append(metricsKey.toString()).append(": ").append(metrics.get(metricsKey)).append("\n");
+        //}
 
         return result.toString();
     }

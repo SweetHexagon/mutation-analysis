@@ -9,44 +9,64 @@ import spoon.reflect.code.CtExpression;
 import spoon.reflect.code.CtVariableRead;
 import spoon.reflect.code.BinaryOperatorKind;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class AODPattern implements ChangeClassifier.MutationPattern {
 
+    /**
+     * All arithmetic operators that AOD covers.
+     */
+    private static final Set<BinaryOperatorKind> ARITHMETIC_OPS = Set.of(
+            BinaryOperatorKind.PLUS,
+            BinaryOperatorKind.MINUS,
+            BinaryOperatorKind.MUL,
+            BinaryOperatorKind.DIV,
+            BinaryOperatorKind.MOD
+    );
+
     @Override
-    public boolean matches(List<Operation> ops) {
-        CtBinaryOperator<?> deletedBin = null;
-        CtVariableRead<?>    movedVar   = null;
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        // 1) Gather all DeleteOperations that remove an arithmetic binary operator
+        List<DeleteOperation> deletes = new ArrayList<>();
+        // 2) Gather all MoveOperations that move a variable read
+        List<MoveOperation>   moves   = new ArrayList<>();
 
         for (Operation op : ops) {
-            // 1) Detect deletion of a binary operator a + b
-            if (op instanceof DeleteOperation del) {
-                if (del.getNode() instanceof CtBinaryOperator<?> bin
-                        && bin.getKind() == BinaryOperatorKind.PLUS) {
-                    deletedBin = bin;
-                }
+            if (op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtBinaryOperator<?> bin
+                    && ARITHMETIC_OPS.contains(bin.getKind())) {
+                deletes.add(del);
             }
-            // 2) Detect moving of one of the variable reads (a or b)
-            else if (op instanceof MoveOperation mv) {
-                if (mv.getNode() instanceof CtVariableRead<?> vr) {
-                    movedVar = vr;
+            else if (op instanceof MoveOperation mv
+                    && mv.getNode() instanceof CtVariableRead<?>) {
+                moves.add(mv);
+            }
+        }
+
+        // 3) For each deleted arithmetic operator, see which operand was moved
+        List<Operation> matched = new ArrayList<>();
+        for (DeleteOperation del : deletes) {
+            CtBinaryOperator<?> bin = (CtBinaryOperator<?>) del.getNode();
+            CtExpression<?> left  = bin.getLeftHandOperand();
+            CtExpression<?> right = bin.getRightHandOperand();
+
+            for (MoveOperation mv : moves) {
+                CtVariableRead<?> vr = (CtVariableRead<?>) mv.getNode();
+                if (vr.equals(left) || vr.equals(right)) {
+                    // record the delete + this move
+                    matched.add(del);
+                    matched.add(mv);
                 }
             }
         }
 
-        // If we didn't both delete a binary and move a variable, it's not this pattern
-        if (deletedBin == null || movedVar == null) {
-            return false;
-        }
-
-        // 3) Check that the moved variable was one of the operands of the deleted binary operator
-        CtExpression<?> left  = deletedBin.getLeftHandOperand();
-        CtExpression<?> right = deletedBin.getRightHandOperand();
-        return movedVar.equals(left) || movedVar.equals(right);
+        return matched;
     }
 
     @Override
     public String description() {
-        return "Mutation \"replace binary with operand\" (replaced `a + b` with a single operand)";
+        return "Mutation ‘AOD’ – replaces `a op b` (any arithmetic op) with one of its operands";
     }
 }

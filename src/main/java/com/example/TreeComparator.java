@@ -2,6 +2,8 @@ package com.example;
 
 
 import com.example.classifier.ChangeClassifier;
+import com.example.classifier.MutationKind;
+import com.example.pojo.ClassifiedOperation;
 import com.example.util.TreeUtils;
 import com.github.gumtreediff.matchers.CompositeMatchers;
 import com.github.gumtreediff.matchers.ConfigurationOptions;
@@ -10,9 +12,9 @@ import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.DiffConfiguration;
 import gumtree.spoon.diff.operations.*;
-
 import java.util.List;
 
+import org.apache.commons.lang3.builder.DiffBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import spoon.Launcher;
@@ -41,6 +43,7 @@ import spoon.reflect.visitor.filter.TypeFilter;
 
 @Component
 public class TreeComparator {
+
 
     private final ChangeClassifier changeClassifier;
 
@@ -147,6 +150,7 @@ public class TreeComparator {
         // 3) Index methods by signature
         List<CtMethod<?>> oldMethods = oldModel.getElements(new TypeFilter<>(CtMethod.class));
         List<CtMethod<?>> newMethods = newModel.getElements(new TypeFilter<>(CtMethod.class));
+
         Map<String, CtMethod<?>> oldMap = oldMethods.stream()
                 .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
         Map<String, CtMethod<?>> newMap = newMethods.stream()
@@ -154,14 +158,23 @@ public class TreeComparator {
 
         // 4) Prepare comparator and accumulator
         AstComparator comp = new AstComparator();
+
         List<EditOperation> allOps = new ArrayList<>();
+        List<Operation>     allRawOps = new ArrayList<>();
 
         // 5) For each method signature (including added or removed)
         Set<String> allSignatures = new HashSet<>();
         allSignatures.addAll(oldMap.keySet());
         allSignatures.addAll(newMap.keySet());
 
+        Map<Operation, ClassifiedOperation> table = new LinkedHashMap<>();
+        Map<String, Integer> fileMetricsAllMethods = new LinkedHashMap<>();
+        for (MutationKind k : MutationKind.values()) {
+            fileMetricsAllMethods.put(k.name(), 0);
+        }
+
         for (String sig : allSignatures) {
+
             CtMethod<?> oldM = oldMap.get(sig);
             CtMethod<?> newM = newMap.get(sig);
             String methodName = (newM != null ? newM : oldM).getSimpleName();
@@ -171,7 +184,7 @@ public class TreeComparator {
             }
 
             // Clone so comparator always has two inputs
-            CtElement left  = oldM != null ? oldM.clone() : newM.clone();
+            CtElement left = oldM != null ? oldM.clone() : newM.clone();
             CtElement right = newM != null ? newM.clone() : oldM.clone();
 
             Diff diff = comp.compare(left, right);
@@ -192,8 +205,14 @@ public class TreeComparator {
                 switch (op) {
                     case InsertOperation ins -> dst = ins.getNode();
                     case DeleteOperation del -> src = del.getNode();
-                    case UpdateOperation upd -> { src = upd.getSrcNode(); dst = upd.getDstNode(); }
-                    case MoveOperation mov   -> { src = mov.getSrcNode(); dst = mov.getDstNode(); }
+                    case UpdateOperation upd -> {
+                        src = upd.getSrcNode();
+                        dst = upd.getDstNode();
+                    }
+                    case MoveOperation mov -> {
+                        src = mov.getSrcNode();
+                        dst = mov.getDstNode();
+                    }
                     default -> throw new IllegalArgumentException("Unknown edit: " + type);
                 }
 
@@ -210,34 +229,57 @@ public class TreeComparator {
                         dst != null ? newFile : oldFile, ctx, 1
                 )
                         : List.of();
-
+                allRawOps.add(op);
                 allOps.add(new EditOperation(
                         type, src, dst, jpSrc, jpDst, methodName, contextList
                 ));
 
 
-
             }
 
-            List<Operation> ops = diff.getRootOperations();
+            // 1) wrap them all
+            List<Operation> rawOps = diff.getRootOperations();
 
-            if (debug) {
+            for (Operation o : rawOps) {
+                table.putIfAbsent(o, new ClassifiedOperation(o));
+            }
 
-                ops.forEach(op -> System.out.println(" * "
-                        + op.getAction().getName()
-                        + " -> node: " + op.getNode().getClass().getSimpleName()));
+            // 2) for each registered pattern, see if it fires,
+            //    and *also* let it tell us which ops it “uses”
+            for (var e : changeClassifier.getRegisteredPatterns().entrySet()) {
+                var kind = e.getKey();
+                var pat = e.getValue();
 
-                List<String> found = changeClassifier.classify(ops);
-                if (found.isEmpty()) {
-                    System.out.println("   -> No pattern found");
-                } else {
-                    System.out.println("   -> Patterns found:");
-                    found.forEach(p -> System.out.println("      - " + p));
+                List<Operation> used = pat.matchingOperations(rawOps);
+                if (!used.isEmpty()) {
+                    // tag each op as before...
+                    used.forEach(o -> table.get(o).addKind(kind));
+
                 }
             }
+
+            // 3) now you have a list of ClassifiedOperation
+            List<ClassifiedOperation> classified = new ArrayList<>(table.values());
+
+            Set<MutationKind> methodMutations = classified.stream()
+                    .flatMap(c -> c.getKinds().stream())
+                    .collect(Collectors.toSet());
+
+            methodMutations.forEach(kind -> fileMetricsAllMethods.merge(kind.name(), 1, Integer::sum));
+
+            // 4) printing / filtering
+            if (debug) {
+                classified.forEach(c -> {
+                    System.out.println(c.getOperation().getAction().getName()
+                            + ": ||" + c.getOperation().getAction().getNode() + " ||"
+                            + "  – kinds=" + c.getKinds());
+                });
+                System.out.printf("   → method %s had mutations %s%n",
+                        methodName, methodMutations);
+            }
+
         }
         sw.stop();
-
 
 
         if (debug) {
@@ -246,14 +288,21 @@ public class TreeComparator {
         }
 
 
-        // 7) Single FileResult with every edit (comments now filtered out)
-        Map<Metrics, Integer> metrics = Map.of(Metrics.EDITS, allOps.size());
+        List<EditOperation> unmutated = new ArrayList<>();
+        for (int i = 0; i < allRawOps.size(); i++) {
+            Operation raw = allRawOps.get(i);
+            ClassifiedOperation c = table.get(raw);
+            if (c.getKinds().isEmpty()) {
+                unmutated.add(allOps.get(i));
+            }
+        }
+
         return createFileResult(
                 fileName,
                 oldFile.getAbsolutePath(),
                 newFile.getAbsolutePath(),
-                allOps,
-                metrics,
+                unmutated,
+                fileMetricsAllMethods,
                 oldCommit != null ? oldCommit.getName() : null,
                 newCommit != null ? newCommit.getName() : null
         );
@@ -262,7 +311,7 @@ public class TreeComparator {
 
 
     private  FileResult createFileResult(String fileName, String original, String changed,
-                                               List<EditOperation> ops, Map<Metrics, Integer> metrics,
+                                               List<EditOperation> ops, Map<String, Integer> metrics,
                                                String oldCommit, String newCommit) {
         return FileResult.builder()
                 .name(fileName)

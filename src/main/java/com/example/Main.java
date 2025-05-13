@@ -1,8 +1,9 @@
 package com.example;
 
-import java.util.List;
+import java.util.*;
 
 
+import com.example.classifier.MutationKind;
 import com.example.dto.CommitPairDTO;
 import com.example.dto.FileResultDto;
 import com.example.mapper.CommitPairMapper;
@@ -15,23 +16,26 @@ import org.apache.commons.io.FileUtils;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.SpringApplication;
+import org.springframework.jmx.support.MetricType;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.concurrent.*;
 
 @SpringBootApplication
 public class Main implements CommandLineRunner {
     private final GitRepositoryManager repoManager;
-    private final TreeComparator      treeComparator;  // ← inject your newly-made bean
+    private final TreeComparator      treeComparator;
+    EnumMap<MutationKind,Integer> repoPatternCounts =
+            new EnumMap<>(MutationKind.class);
+
 
     public Main(GitRepositoryManager repoManager,
                 TreeComparator treeComparator) {
         this.repoManager     = repoManager;
         this.treeComparator  = treeComparator;
+
     }
 
 
@@ -78,15 +82,20 @@ public class Main implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
 
-        manualTest();
+        //manualTest();
 
-        //presentation(repoUrls);
+        presentation(repoUrls);
 
         //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
     }
 
     public void presentation(List<String> repoUrls) throws InterruptedException {
         for (String repoUrl : repoUrls) {
+
+            for (MutationKind k : MutationKind.values()) {
+                repoPatternCounts.put(k, 0);
+            }
+
             String repoName = repoUrl.substring(repoUrl.lastIndexOf("/") + 1);
             String repoDir  = localPath + File.separator + repoName;
 
@@ -137,7 +146,10 @@ public class Main implements CommandLineRunner {
                 System.out.println("Memory used (MB): " + used / (1024 * 1024));
             }
 
-            JsonUtils.filterUniqueOperations(repoUrl);
+            JsonUtils.appendPatternCounts(repoUrl, repoPatternCounts);
+            System.out.println("Wrote patternCounts for " + repoName);
+
+            //JsonUtils.filterUniqueOperations(repoUrl);
 
             repoManager.closeRepository();
 
@@ -156,20 +168,33 @@ public class Main implements CommandLineRunner {
             cs.submit(() -> {
                 for (String file : pair.changedFiles()) {
                     FileResult result = treeComparator.compareFileInTwoCommits(
-                            repoDir,
-                            pair.oldCommit(),
-                            pair.newCommit(),
-                            file,
-                            true
+                            repoDir, pair.oldCommit(), pair.newCommit(), file, false
                     );
                     if (result != null) {
-                        batchResults.add(ResultMapper.toDto(result));
+                        // 1) Immediately merge its file‐level metrics into your repo‐wide counters
+                        Map<String,Integer> fileMetrics = result.getMetrics();
+                        if (fileMetrics != null) {
+                            for (var entry : fileMetrics.entrySet()) {
+                                String metricName = entry.getKey().toString();
+                                int    count      = entry.getValue();
+                                try {
+                                    MutationKind kind = MutationKind.valueOf(metricName);
+                                    repoPatternCounts.merge(kind, count, Integer::sum);
+                                } catch (IllegalArgumentException ignored) {
+                                    // skip non‐pattern metrics like EDITS
+                                }
+                            }
+                        }
 
+                        // 2) still map to DTO and collect for JSON output
+                        FileResultDto dto = ResultMapper.toDto(result);
+                        batchResults.add(dto);
                     }
                 }
                 return pair;
             });
         }
+
 
         int completed = 0;
         while (completed < total) {

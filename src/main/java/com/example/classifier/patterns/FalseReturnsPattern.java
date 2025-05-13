@@ -1,23 +1,25 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.UpdateOperation;
 import gumtree.spoon.diff.operations.Operation;
+import gumtree.spoon.diff.operations.UpdateOperation;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.CtReturn;
-import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 public class FalseReturnsPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        return ops.stream()
-                .filter(op -> op instanceof UpdateOperation)
-                .map(UpdateOperation.class::cast)
-                .anyMatch(this::isTrueReturnFlippedToFalse);
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
+        for (Operation op : ops) {
+            if (op instanceof UpdateOperation upd && isTrueReturnFlippedToFalse(upd)) {
+                matched.add(upd);
+            }
+        }
+        return matched;
     }
 
     private boolean isTrueReturnFlippedToFalse(UpdateOperation upd) {
@@ -40,8 +42,7 @@ public class FalseReturnsPattern implements ChangeClassifier.MutationPattern {
         }
 
         // and that literal must sit inside a return-statement
-        CtReturn<?> rtn = dstLit.getParent(CtReturn.class);
-        return rtn != null;
+        return dstLit.getParent(CtReturn.class) != null;
     }
 
     @Override

@@ -1,35 +1,42 @@
 package com.example.classifier.patterns;
 
-
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
-import spoon.reflect.code.CtInvocation;
+import gumtree.spoon.diff.operations.Operation;
+import gumtree.spoon.diff.operations.UpdateOperation;
 import spoon.reflect.code.CtExpression;
+import spoon.reflect.code.CtInvocation;
 import spoon.reflect.reference.CtExecutableReference;
 import spoon.reflect.reference.CtTypeReference;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ExperimentalBigIntegerPattern implements ChangeClassifier.MutationPattern {
 
     private static final String BIGINT = "java.math.BigInteger";
 
-    @Override
-    public boolean matches(List<Operation> ops) {
-        return matchesUpdateSwap(ops);
-    }
 
     private boolean matchesUpdateSwap(List<Operation> ops) {
+        return ops.stream()
+                .filter(UpdateOperation.class::isInstance)
+                .map(UpdateOperation.class::cast)
+                .anyMatch(upd -> upd.getSrcNode() instanceof CtInvocation<?> srcInv
+                        && upd.getDstNode() instanceof CtInvocation<?> dstInv
+                        && isBigIntegerInvocationSwap(srcInv, dstInv));
+    }
+
+    @Override
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
-            if (op instanceof UpdateOperation upd) {
-                if (upd.getSrcNode()  instanceof CtInvocation<?> srcInv
-                        && upd.getDstNode()  instanceof CtInvocation<?> dstInv
-                        && isBigIntegerInvocationSwap(srcInv, dstInv)) {
-                    return true;
-                }
+            if (op instanceof UpdateOperation upd
+                    && upd.getSrcNode() instanceof CtInvocation<?> srcInv
+                    && upd.getDstNode() instanceof CtInvocation<?> dstInv
+                    && isBigIntegerInvocationSwap(srcInv, dstInv)) {
+                matched.add(op);
             }
         }
-        return false;
+        return matched;
     }
 
     /**
@@ -51,8 +58,7 @@ public class ExperimentalBigIntegerPattern implements ChangeClassifier.MutationP
             return false;
         }
         // 3) same arg list, each arg is BigInteger
-        List<CtExpression<?>> a1 = src.getArguments(),
-                a2 = dst.getArguments();
+        List<CtExpression<?>> a1 = src.getArguments(), a2 = dst.getArguments();
         if (a1.size() != a2.size()) {
             return false;
         }
@@ -67,16 +73,13 @@ public class ExperimentalBigIntegerPattern implements ChangeClassifier.MutationP
             }
         }
         // 4) method names differ, and both declared on BigInteger
-        CtExecutableReference<?> x1 = src.getExecutable(),
-                x2 = dst.getExecutable();
+        CtExecutableReference<?> x1 = src.getExecutable(), x2 = dst.getExecutable();
         if (x1 == null || x2 == null
                 || x1.getSimpleName().equals(x2.getSimpleName())) {
             return false;
         }
-        CtTypeReference<?> d1 = x1.getDeclaringType(),
-                d2 = x2.getDeclaringType();
-        return d1 != null
-                && d2 != null
+        CtTypeReference<?> d1 = x1.getDeclaringType(), d2 = x2.getDeclaringType();
+        return d1 != null && d2 != null
                 && BIGINT.equals(d1.getQualifiedName())
                 && BIGINT.equals(d2.getQualifiedName());
     }

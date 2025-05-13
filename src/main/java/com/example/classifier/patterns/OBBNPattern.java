@@ -1,57 +1,73 @@
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
-import gumtree.spoon.diff.operations.*;
+import gumtree.spoon.diff.operations.DeleteOperation;
+import gumtree.spoon.diff.operations.InsertOperation;
+import gumtree.spoon.diff.operations.MoveOperation;
+import gumtree.spoon.diff.operations.Operation;
+import gumtree.spoon.diff.operations.UpdateOperation;
 import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.CtExpression;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class OBBNPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
-        CtBinaryOperator<?> deletedBinOp = null;
-        CtExpression<?> insertedExpr = null;
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
 
+        // Case A: bitwise flip (& ↔ |)
         for (Operation op : ops) {
-            // Case A: Flip bitwise operator (& ↔ |)
-            if (op instanceof UpdateOperation update) {
-                CtElement src = update.getSrcNode();
-                CtElement dst = update.getDstNode();
-                if (src instanceof CtBinaryOperator<?> oldOp && dst instanceof CtBinaryOperator<?> newOp) {
-                    BinaryOperatorKind oldKind = oldOp.getKind();
-                    BinaryOperatorKind newKind = newOp.getKind();
-                    if (isBitwiseFlip(oldKind, newKind)) return true; // OBBN1
+            if (op instanceof UpdateOperation upd) {
+                CtElement src = upd.getSrcNode();
+                CtElement dst = upd.getDstNode();
+                if (src instanceof CtBinaryOperator<?> oldOp
+                        && dst instanceof CtBinaryOperator<?> newOp
+                        && isBitwiseFlip(oldOp.getKind(), newOp.getKind())) {
+                    matched.add(upd);
+                    return matched;
                 }
             }
+        }
 
-            // Case B/C: Replace with one operand (OBBN2/OBBN3)
-            if (op instanceof DeleteOperation del && del.getNode() instanceof CtBinaryOperator<?> binOp) {
+        // Case B/C: replace with one operand
+        CtBinaryOperator<?> deletedBinOp = null;
+        DeleteOperation delOp = null;
+        for (Operation op : ops) {
+            if (op instanceof DeleteOperation del
+                    && del.getNode() instanceof CtBinaryOperator<?> binOp) {
                 deletedBinOp = binOp;
+                delOp = del;
+                matched.add(delOp);
+                break;
             }
+        }
+        if (deletedBinOp == null) {
+            return List.of();
+        }
 
-            if ((op instanceof InsertOperation || op instanceof MoveOperation) && op.getNode() instanceof CtExpression<?> expr) {
-                insertedExpr = (CtExpression<?>) op.getNode();
+        for (Operation op : ops) {
+            if ((op instanceof InsertOperation || op instanceof MoveOperation)
+                    && op.getNode() instanceof CtExpression<?> expr) {
+                CtExpression<?> left  = deletedBinOp.getLeftHandOperand();
+                CtExpression<?> right = deletedBinOp.getRightHandOperand();
+                if (expr.equals(left) || expr.equals(right)) {
+                    matched.add(op);
+                    return matched;
+                }
             }
         }
 
-        if (deletedBinOp != null && insertedExpr != null) {
-            CtExpression<?> left = deletedBinOp.getLeftHandOperand();
-            CtExpression<?> right = deletedBinOp.getRightHandOperand();
-
-            // Match OBBN2 or OBBN3
-            return insertedExpr.equals(left) || insertedExpr.equals(right);
-        }
-
-        return false;
+        return List.of();
     }
 
     private boolean isBitwiseFlip(BinaryOperatorKind oldKind, BinaryOperatorKind newKind) {
-        return (oldKind == BinaryOperatorKind.BITAND && newKind == BinaryOperatorKind.BITOR) ||
-                (oldKind == BinaryOperatorKind.BITOR && newKind == BinaryOperatorKind.BITAND);
+        return (oldKind == BinaryOperatorKind.BITAND && newKind == BinaryOperatorKind.BITOR)
+                || (oldKind == BinaryOperatorKind.BITOR  && newKind == BinaryOperatorKind.BITAND);
     }
 
     @Override

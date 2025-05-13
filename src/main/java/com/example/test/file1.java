@@ -1,15 +1,9 @@
-public class VOID_METHOD_CALLS {
-    private int count = 0;
+import java.util.*;
 
-    public void increment() {
-        count++;
+public class EMPTY_RETURNS {
+
+    public Collection<String> returnCollection() {
+        return Arrays.asList("value");
     }
 
-    public int getCount() {
-        return count;
-    }
-
-    public void test() {
-        increment();
-    }
 }

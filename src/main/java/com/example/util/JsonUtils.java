@@ -1,6 +1,7 @@
 package com.example.util;
 
 import com.example.CommitPairWithFiles;
+import com.example.classifier.MutationKind;
 import com.example.dto.CommitPairDTO;
 import com.example.dto.FileResultDto;
 import com.example.mapper.ResultMapper;
@@ -16,10 +17,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import com.example.pojo.FileResult;
 
@@ -35,6 +33,22 @@ public class JsonUtils {
             mapper.writerWithDefaultPrettyPrinter().writeValue(new File(outputPath), root);
         } catch (IOException e) {
             System.err.println("Failed to initialize JSON output: " + e.getMessage());
+        }
+    }
+
+    public static void appendPatternCounts(String repoUrl,
+                                           EnumMap<MutationKind,Integer> counts) {
+        String path = "src/main/resources/programOutput/" + generateComparisonFileName(repoUrl);
+        try {
+            ObjectNode root = (ObjectNode) mapper.readTree(new File(path));
+            ObjectNode pc = mapper.createObjectNode();
+            for (var e : counts.entrySet()) {
+                pc.put(e.getKey().name(), e.getValue());
+            }
+            root.set("patternCounts", pc);
+            mapper.writerWithDefaultPrettyPrinter().writeValue(new File(path), root);
+        } catch (IOException e) {
+            System.err.println("Failed to append patternCounts: " + e.getMessage());
         }
     }
 

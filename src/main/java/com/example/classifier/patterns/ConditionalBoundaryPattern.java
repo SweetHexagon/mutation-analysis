@@ -7,6 +7,7 @@ import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,28 +27,24 @@ public class ConditionalBoundaryPattern implements ChangeClassifier.MutationPatt
     );
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
             if (!(op instanceof UpdateOperation upd)) {
                 continue;
             }
             CtElement src = upd.getSrcNode();
             CtElement dst = upd.getDstNode();
-
-            // Look only at binary comparisons
             if (src instanceof CtBinaryOperator<?> binSrc
                     && dst instanceof CtBinaryOperator<?> binDst) {
-
                 BinaryOperatorKind from = binSrc.getKind();
                 BinaryOperatorKind to   = binDst.getKind();
-
-                // If we have a mapping from `from` → `to`, it's a boundary mutation
                 if (CB_MAP.containsKey(from) && CB_MAP.get(from).contains(to)) {
-                    return true;
+                    matched.add(upd);
                 }
             }
         }
-        return false;
+        return matched;
     }
 
     @Override

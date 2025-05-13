@@ -5,29 +5,29 @@ import gumtree.spoon.diff.operations.DeleteOperation;
 import gumtree.spoon.diff.operations.Operation;
 import spoon.reflect.code.CtUnaryOperator;
 import spoon.reflect.code.UnaryOperatorKind;
-import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class RemoveIncrementsPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
             if (op instanceof DeleteOperation del) {
-                CtElement node = del.getNode();
-
-                if (node instanceof CtUnaryOperator<?> unary) {
+                if (del.getNode() instanceof CtUnaryOperator<?> unary) {
                     UnaryOperatorKind kind = unary.getKind();
-                    if (kind == UnaryOperatorKind.PREINC || kind == UnaryOperatorKind.POSTINC ||
-                            kind == UnaryOperatorKind.PREDEC || kind == UnaryOperatorKind.POSTDEC) {
-                        return true;
+                    if (kind == UnaryOperatorKind.PREINC
+                            || kind == UnaryOperatorKind.POSTINC
+                            || kind == UnaryOperatorKind.PREDEC
+                            || kind == UnaryOperatorKind.POSTDEC) {
+                        matched.add(del);
                     }
                 }
             }
         }
-
-        return false;
+        return matched;
     }
 
     @Override

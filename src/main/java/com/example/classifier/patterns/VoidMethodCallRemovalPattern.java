@@ -7,27 +7,26 @@ import spoon.reflect.code.CtInvocation;
 import spoon.reflect.declaration.CtElement;
 import spoon.reflect.reference.CtTypeReference;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class VoidMethodCallRemovalPattern implements ChangeClassifier.MutationPattern {
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
             if (op instanceof DeleteOperation del) {
                 CtElement node = del.getNode();
-
                 if (node instanceof CtInvocation<?> invocation) {
                     CtTypeReference<?> returnType = invocation.getType();
-
                     if (returnType != null && "void".equals(returnType.getSimpleName())) {
-                        return true;
+                        matched.add(del);
                     }
                 }
             }
         }
-
-        return false;
+        return matched;
     }
 
     @Override

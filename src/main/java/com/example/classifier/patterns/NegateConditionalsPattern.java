@@ -3,11 +3,13 @@ package com.example.classifier.patterns;
 import com.example.classifier.ChangeClassifier;
 import gumtree.spoon.diff.operations.Operation;
 import gumtree.spoon.diff.operations.UpdateOperation;
-import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.code.CtBinaryOperator;
+import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.declaration.CtElement;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class NegateConditionalsPattern implements ChangeClassifier.MutationPattern {
 
@@ -21,25 +23,24 @@ public class NegateConditionalsPattern implements ChangeClassifier.MutationPatte
     );
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
-            if (!(op instanceof UpdateOperation update)) continue;
-
-            CtElement before = update.getSrcNode();
-            CtElement after = update.getDstNode();
-
-            if (before instanceof CtBinaryOperator<?> oldOp && after instanceof CtBinaryOperator<?> newOp) {
-                BinaryOperatorKind oldKind = oldOp.getKind();
-                BinaryOperatorKind newKind = newOp.getKind();
-
-                if (conditionalNegations.containsKey(oldKind)
-                        && conditionalNegations.get(oldKind) == newKind) {
-                    return true;
+            if (op instanceof UpdateOperation update) {
+                CtElement before = update.getSrcNode();
+                CtElement after  = update.getDstNode();
+                if (before instanceof CtBinaryOperator<?> oldOp
+                        && after  instanceof CtBinaryOperator<?> newOp) {
+                    BinaryOperatorKind oldKind = oldOp.getKind();
+                    BinaryOperatorKind newKind = newOp.getKind();
+                    if (conditionalNegations.containsKey(oldKind)
+                            && conditionalNegations.get(oldKind) == newKind) {
+                        matched.add(update);
+                    }
                 }
             }
         }
-
-        return false;
+        return matched;
     }
 
     @Override

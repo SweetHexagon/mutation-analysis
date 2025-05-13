@@ -174,7 +174,8 @@ public class GitUtils {
                             .filter(d -> {
                                 try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
                                     df.setRepository(repository);
-                                    df.setDiffComparator(RawTextComparator.DEFAULT);
+                                    df.setDiffComparator(RawTextComparator.WS_IGNORE_ALL);
+                                    df.setContext(0);
                                     df.setDetectRenames(true);
 
                                     // split the diff into individual edit blocks
@@ -184,20 +185,22 @@ public class GitUtils {
                                     }
 
                                     // for every block, count the meaningful lines
+                                    boolean sawExactOne = false;
                                     for (Edit e : edits) {
                                         int blockMeanings = DiffUtils.countMeaningfulChangedLinesInBlock(
                                                 repository, oldC, newC, d, e);
+
                                         if (debug) {
                                             System.out.println("Block " + e + " has "
                                                     + blockMeanings + " meaningful lines");
                                         }
-                                        if (blockMeanings != 1) {
-                                            return false;  // reject if any block deviates
+                                        if (blockMeanings <= 2) {
+                                            sawExactOne = true;
                                         }
                                     }
 
                                     // passed: every block had exactly one meaningful changed line
-                                    return true;
+                                    return sawExactOne;
                                 } catch (IOException io) {
                                     if (debug) io.printStackTrace();
                                     return false;
@@ -233,7 +236,8 @@ public class GitUtils {
     private static List<DiffEntry> getDiffs(Repository repo, RevCommit oldC, RevCommit newC) throws IOException {
         try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
             df.setRepository(repo);
-            df.setDiffComparator(RawTextComparator.DEFAULT);
+            df.setDiffComparator(RawTextComparator.WS_IGNORE_ALL);
+            df.setContext(0);
             df.setDetectRenames(true);
             return df.scan(oldC.getTree(), newC.getTree());
         }

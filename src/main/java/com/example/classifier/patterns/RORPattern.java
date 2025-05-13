@@ -1,5 +1,3 @@
-
-
 package com.example.classifier.patterns;
 
 import com.example.classifier.ChangeClassifier;
@@ -9,6 +7,7 @@ import spoon.reflect.code.BinaryOperatorKind;
 import spoon.reflect.code.CtBinaryOperator;
 import spoon.reflect.declaration.CtElement;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -25,26 +24,26 @@ public class RORPattern implements ChangeClassifier.MutationPattern {
     );
 
     @Override
-    public boolean matches(List<Operation> ops) {
+    public List<Operation> matchingOperations(List<Operation> ops) {
+        List<Operation> matched = new ArrayList<>();
         for (Operation op : ops) {
-            if (!(op instanceof UpdateOperation update)) continue;
-
-            CtElement src = update.getSrcNode();
-            CtElement dst = update.getDstNode();
-
-            if (src instanceof CtBinaryOperator<?> oldOp && dst instanceof CtBinaryOperator<?> newOp) {
+            if (!(op instanceof UpdateOperation upd)) {
+                continue;
+            }
+            CtElement src = upd.getSrcNode();
+            CtElement dst = upd.getDstNode();
+            if (src instanceof CtBinaryOperator<?> oldOp
+                    && dst instanceof CtBinaryOperator<?> newOp) {
                 BinaryOperatorKind oldKind = oldOp.getKind();
                 BinaryOperatorKind newKind = newOp.getKind();
-
-                // Check that both old and new operators are ROR types and the operator changed
-                if (ROR_OPERATORS.contains(oldKind) &&
-                        ROR_OPERATORS.contains(newKind) &&
-                        !oldKind.equals(newKind)) {
-                    return true;
+                if (ROR_OPERATORS.contains(oldKind)
+                        && ROR_OPERATORS.contains(newKind)
+                        && !oldKind.equals(newKind)) {
+                    matched.add(upd);
                 }
             }
         }
-        return false;
+        return matched;
     }
 
     @Override
@@ -52,4 +51,3 @@ public class RORPattern implements ChangeClassifier.MutationPattern {
         return "Mutation ‘ROR’ – replaces relational operators (e.g., < with <=, == with !=)";
     }
 }
-
