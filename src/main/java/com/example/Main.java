@@ -48,11 +48,11 @@ public class Main implements CommandLineRunner {
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            "https://github.com/SweetHexagon/pitest-mutators"
-            ////"https://github.com/Snailclimb/JavaGuide",            // 5 800 commits
-            ////"https://github.com/krahets/hello-algo",               // small
-            ////"https://github.com/iluwatar/java-design-patterns",    // 4 327 commits
-            ////"https://github.com/macrozheng/mall",                  // small
+            //"https://github.com/SweetHexagon/pitest-mutators"
+            //"https://github.com/Snailclimb/JavaGuide"            // 5 800 commits
+            //"https://github.com/krahets/hello-algo"               // small
+            "https://github.com/iluwatar/java-design-patterns"    // 4 327 commits
+            //"https://github.com/macrozheng/mall"                  // small
             ////"https://github.com/doocs/advanced-java",              // small
             //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
             ////"https://github.com/MisterBooo/LeetCodeAnimation",     // small
@@ -187,8 +187,11 @@ public class Main implements CommandLineRunner {
                         }
 
                         // 2) still map to DTO and collect for JSON output
-                        FileResultDto dto = ResultMapper.toDto(result);
-                        batchResults.add(dto);
+                        if (!result.getEditOperations().isEmpty()) {
+                            FileResultDto dto = ResultMapper.toDto(result);
+                            batchResults.add(dto);
+                        }
+
                     }
                 }
                 return pair;
@@ -230,10 +233,11 @@ public class Main implements CommandLineRunner {
     }
 
     public  void manualTest() {
-        String repoName = "elasticsearch";
-        String oldSha = "0a599f924bf91e22ec8fa2a3d327bf224f8a5f25";
-        String newSha = "7abbaf0a24c970021992bd909236cf563d28ebc4";
-        String relativePath = "x-pack/plugin/core/src/test/java/org/elasticsearch/xpack/core/security/authz/store/ReservedRolesStoreTests.java";
+
+        String repoName = "hello-algo";
+        String oldSha = "2bba70fd87cc108e827954122180450712b8a177";
+        String newSha = "e03022d5fb15b998e569755e1847bf0954acae94";
+        String relativePath = "codes/java/chapter_computational_complexity/time_complexity.java";
         String outputDir = "D:\\Java projects\\mutation-analysis\\src\\main\\resources\\extractedFiles";
 
         cleanUp(outputDir);

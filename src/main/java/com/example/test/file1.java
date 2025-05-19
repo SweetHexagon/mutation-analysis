@@ -1,9 +1,12 @@
-import java.util.*;
+package com.example;
 
-public class EMPTY_RETURNS {
+import java.util.List;
+import java.util.Arrays;
 
-    public Collection<String> returnCollection() {
-        return Arrays.asList("value");
+public class ListFactory {
+    // a perfectly valid generic varargs helper
+    public static <T> List<T> of(T... elements) {
+        // trivial implementation
+        return Arrays.asList(elements);
     }
-
 }

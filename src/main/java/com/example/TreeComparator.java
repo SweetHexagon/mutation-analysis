@@ -5,19 +5,15 @@ import com.example.classifier.ChangeClassifier;
 import com.example.classifier.MutationKind;
 import com.example.pojo.ClassifiedOperation;
 import com.example.util.TreeUtils;
-import com.github.gumtreediff.matchers.CompositeMatchers;
-import com.github.gumtreediff.matchers.ConfigurationOptions;
-import com.github.gumtreediff.matchers.GumtreeProperties;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
-import gumtree.spoon.diff.DiffConfiguration;
 import gumtree.spoon.diff.operations.*;
 import java.util.List;
 
-import org.apache.commons.lang3.builder.DiffBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import spoon.Launcher;
+import spoon.compiler.Environment;
 import spoon.reflect.CtModel;
 import spoon.reflect.code.CtComment;
 import spoon.reflect.declaration.CtMethod;
@@ -40,6 +36,9 @@ import java.util.stream.Collectors;
 
 import com.github.javaparser.ast.Node;
 import spoon.reflect.visitor.filter.TypeFilter;
+import spoon.support.Level;
+
+import static com.example.EditOperation.Type.*;
 
 @Component
 public class TreeComparator {
@@ -84,7 +83,7 @@ public class TreeComparator {
             return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
         } catch (Exception e) {
             if (debug) {
-                System.err.println("Failed comparing files: " + e.getMessage());
+                System.err.println("Failed comparing files: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
             }
             return null;
         } finally {
@@ -120,7 +119,7 @@ public class TreeComparator {
         }
     }
 
-    private  FileResult compareFiles(
+    public FileResult compareFiles(
             File oldFile,
             File newFile,
             String fileName,
@@ -130,182 +129,321 @@ public class TreeComparator {
     ) throws Exception {
         Stopwatch sw = Stopwatch.createStarted();
 
-        // 1) Build Spoon models for old and new versions
-        Launcher oldLauncher = new Launcher();
-        oldLauncher.addInputResource(oldFile.getPath());
-        oldLauncher.buildModel();
-        CtModel oldModel = oldLauncher.getModel();
+        CtModel oldModel = buildModel(oldFile);
+        CtModel newModel = buildModel(newFile);
 
-        Launcher newLauncher = new Launcher();
-        newLauncher.addInputResource(newFile.getPath());
-        newLauncher.buildModel();
-        CtModel newModel = newLauncher.getModel();
+        stripComments(oldModel);
+        stripComments(newModel);
 
-        // 2) Remove all comments so they don't show up in the diff
-        oldModel.getElements(new TypeFilter<>(CtComment.class))
-                .forEach(CtComment::delete);
-        newModel.getElements(new TypeFilter<>(CtComment.class))
-                .forEach(CtComment::delete);
+        Map<String, CtMethod<?>> oldMap = indexMethods(oldModel);
+        Map<String, CtMethod<?>> newMap = indexMethods(newModel);
 
-        // 3) Index methods by signature
-        List<CtMethod<?>> oldMethods = oldModel.getElements(new TypeFilter<>(CtMethod.class));
-        List<CtMethod<?>> newMethods = newModel.getElements(new TypeFilter<>(CtMethod.class));
-
-        Map<String, CtMethod<?>> oldMap = oldMethods.stream()
-                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
-        Map<String, CtMethod<?>> newMap = newMethods.stream()
-                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
-
-        // 4) Prepare comparator and accumulator
-        AstComparator comp = new AstComparator();
-
+        AstComparator comparator = new AstComparator();
         List<EditOperation> allOps = new ArrayList<>();
-        List<Operation>     allRawOps = new ArrayList<>();
+        List<Operation> allRawOps = new ArrayList<>();
+        Map<Operation, ClassifiedOperation> classification = new LinkedHashMap<>();
+        Map<String, Integer> metrics = initMetrics();
 
-        // 5) For each method signature (including added or removed)
-        Set<String> allSignatures = new HashSet<>();
-        allSignatures.addAll(oldMap.keySet());
-        allSignatures.addAll(newMap.keySet());
+        for (String sig : union(oldMap.keySet(), newMap.keySet())) {
+            CtMethod<?> oldMethod = oldMap.get(sig);
+            CtMethod<?> newMethod = newMap.get(sig);
+            String methodName = (newMethod != null ? newMethod : oldMethod).getSimpleName();
 
-        Map<Operation, ClassifiedOperation> table = new LinkedHashMap<>();
-        Map<String, Integer> fileMetricsAllMethods = new LinkedHashMap<>();
-        for (MutationKind k : MutationKind.values()) {
-            fileMetricsAllMethods.put(k.name(), 0);
-        }
+            if (debug) System.out.printf("– diffing %s%n", sig);
 
-        for (String sig : allSignatures) {
+            Diff diff = diffMethods(comparator, oldMethod, newMethod);
+            processDiff(diff, oldFile, newFile, methodName, allOps, allRawOps, classification);
+            classifyOperations(diff.getRootOperations(), classification);
+            updateMetrics(classification.values(), metrics);
 
-            CtMethod<?> oldM = oldMap.get(sig);
-            CtMethod<?> newM = newMap.get(sig);
-            String methodName = (newM != null ? newM : oldM).getSimpleName();
-
-            if (debug) {
-                System.out.printf("  – diffing method %s%n", sig);
-            }
-
-            // Clone so comparator always has two inputs
-            CtElement left = oldM != null ? oldM.clone() : newM.clone();
-            CtElement right = newM != null ? newM.clone() : oldM.clone();
-
-            Diff diff = comp.compare(left, right);
-
-            // 6) Translate operations, tagging with methodName
-            for (Operation op : diff.getRootOperations()) {
-                String raw = op.getAction().getName();
-                String base = raw.contains("-") ? raw.substring(0, raw.indexOf('-')) : raw;
-                EditOperation.Type type;
-                try {
-                    type = EditOperation.Type.valueOf(base.toUpperCase());
-                } catch (IllegalArgumentException ex) {
-                    if (debug) System.err.println("    Skipping unrecognized: " + raw);
-                    continue;
-                }
-
-                CtElement src = null, dst = null;
-                switch (op) {
-                    case InsertOperation ins -> dst = ins.getNode();
-                    case DeleteOperation del -> src = del.getNode();
-                    case UpdateOperation upd -> {
-                        src = upd.getSrcNode();
-                        dst = upd.getDstNode();
-                    }
-                    case MoveOperation mov -> {
-                        src = mov.getSrcNode();
-                        dst = mov.getDstNode();
-                    }
-                    default -> throw new IllegalArgumentException("Unknown edit: " + type);
-                }
-
-                Node jpSrc = (src != null)
-                        ? TreeUtils.findJavaParserNode(oldFile, src).orElse(null)
-                        : null;
-                Node jpDst = (dst != null)
-                        ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null)
-                        : null;
-
-                CtElement ctx = dst != null ? dst : src;
-                List<String> contextList = (ctx != null)
-                        ? TreeUtils.extractCtElementContext(
-                        dst != null ? newFile : oldFile, ctx, 1
-                )
-                        : List.of();
-                allRawOps.add(op);
-                allOps.add(new EditOperation(
-                        type, src, dst, jpSrc, jpDst, methodName, contextList
-                ));
-
-
-            }
-
-            // 1) wrap them all
-            List<Operation> rawOps = diff.getRootOperations();
-
-            for (Operation o : rawOps) {
-                table.putIfAbsent(o, new ClassifiedOperation(o));
-            }
-
-            // 2) for each registered pattern, see if it fires,
-            //    and *also* let it tell us which ops it “uses”
-            for (var e : changeClassifier.getRegisteredPatterns().entrySet()) {
-                var kind = e.getKey();
-                var pat = e.getValue();
-
-                List<Operation> used = pat.matchingOperations(rawOps);
-                if (!used.isEmpty()) {
-                    // tag each op as before...
-                    used.forEach(o -> table.get(o).addKind(kind));
-
-                }
-            }
-
-            // 3) now you have a list of ClassifiedOperation
-            List<ClassifiedOperation> classified = new ArrayList<>(table.values());
-
-            Set<MutationKind> methodMutations = classified.stream()
-                    .flatMap(c -> c.getKinds().stream())
-                    .collect(Collectors.toSet());
-
-            methodMutations.forEach(kind -> fileMetricsAllMethods.merge(kind.name(), 1, Integer::sum));
-
-            // 4) printing / filtering
-            if (debug) {
-                classified.forEach(c -> {
-                    System.out.println(c.getOperation().getAction().getName()
-                            + ": ||" + c.getOperation().getAction().getNode() + " ||"
-                            + "  – kinds=" + c.getKinds());
-                });
-                System.out.printf("   → method %s had mutations %s%n",
-                        methodName, methodMutations);
-            }
-
+            if (debug) printDebugInfo(classification.values(), methodName);
         }
         sw.stop();
 
+        if (debug) System.out.printf(
+                "AST diff for %s took %d ms and yielded %d ops:%n",
+                fileName,
+                sw.elapsed(TimeUnit.MILLISECONDS),
+                allOps.size()
+        );
 
-        if (debug) {
-            System.out.printf("AST diff for %s took %d ms and yielded %d ops:%n",
-                    fileName, sw.elapsed(TimeUnit.MILLISECONDS), allOps.size());
-        }
+        List<EditOperation> unmutated = extractUnmutated(allRawOps, classification, allOps);
 
-
-        List<EditOperation> unmutated = new ArrayList<>();
-        for (int i = 0; i < allRawOps.size(); i++) {
-            Operation raw = allRawOps.get(i);
-            ClassifiedOperation c = table.get(raw);
-            if (c.getKinds().isEmpty()) {
-                unmutated.add(allOps.get(i));
-            }
-        }
+        List<EditOperation> filteredMoveOperations = mergeChildMovesIntoParent(unmutated);
 
         return createFileResult(
                 fileName,
                 oldFile.getAbsolutePath(),
                 newFile.getAbsolutePath(),
-                unmutated,
-                fileMetricsAllMethods,
-                oldCommit != null ? oldCommit.getName() : null,
-                newCommit != null ? newCommit.getName() : null
+                filteredMoveOperations,
+                metrics,
+                getCommitName(oldCommit),
+                getCommitName(newCommit)
         );
+    }
+
+    private CtModel buildModel(File file) {
+        Launcher launcher = new Launcher();
+        launcher.addInputResource(file.getPath());
+        launcher.buildModel();
+        return launcher.getModel();
+    }
+
+    private void stripComments(CtModel model) {
+        model.getElements(new TypeFilter<>(CtComment.class))
+                .forEach(CtComment::delete);
+    }
+
+    private Map indexMethods(CtModel model) {
+        return model.getElements(new TypeFilter<>(CtMethod.class)).stream()
+                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
+    }
+
+    private Map<String, Integer> initMetrics() {
+        Map<String, Integer> metrics = new LinkedHashMap<>();
+        for (MutationKind kind : MutationKind.values()) {
+            metrics.put(kind.name(), 0);
+        }
+        return metrics;
+    }
+
+    private Set<String> union(Set<String> a, Set<String> b) {
+        Set<String> all = new HashSet<>(a);
+        all.addAll(b);
+        return all;
+    }
+
+    private Diff diffMethods(AstComparator comparator,
+                             CtMethod<?> oldMethod,
+                             CtMethod<?> newMethod) {
+        CtElement left = oldMethod != null ? oldMethod.clone() : newMethod.clone();
+        CtElement right = newMethod != null ? newMethod.clone() : oldMethod.clone();
+        return comparator.compare(left, right);
+    }
+
+    private void processDiff(
+            Diff diff,
+            File oldFile,
+            File newFile,
+            String methodName,
+            List<EditOperation> allOps,
+            List<Operation> allRawOps,
+            Map<Operation, ClassifiedOperation> classification
+    ) {
+        for (Operation op : diff.getRootOperations()) {
+            EditOperation eo = toEditOperation(op, oldFile, newFile, methodName);
+            if (eo != null) {
+                allRawOps.add(op);
+                allOps.add(eo);
+                classification.putIfAbsent(op, new ClassifiedOperation(op));
+            }
+        }
+    }
+
+    private EditOperation toEditOperation(
+            Operation op,
+            File oldFile,
+            File newFile,
+            String methodName
+    ) {
+        // 1) Determine the edit type
+        String action = op.getAction().getName();
+        String base = action.contains("-")
+                ? action.substring(0, action.indexOf('-'))
+                : action;
+        EditOperation.Type type;
+        try {
+            type = EditOperation.Type.valueOf(base.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            System.out.println("Invalid operation type: " + base);
+            return null;
+        }
+
+        // 2) Extract src and dst AST nodes
+        CtElement src = null, dst = null;
+        if (op instanceof InsertOperation insOp) {
+            dst = insOp.getNode();
+        } else if (op instanceof DeleteOperation delOp) {
+            src = delOp.getNode();
+        } else if (op instanceof UpdateOperation updOp) {
+            src = updOp.getSrcNode();
+            dst = updOp.getDstNode();
+        } else if (op instanceof MoveOperation movOp) {
+            src = movOp.getSrcNode();
+            dst = movOp.getDstNode();
+        }
+
+        // 3) Find corresponding JavaParser nodes (if any)
+        Node jpSrc = null, jpDst = null;
+        try {
+            jpSrc = src != null ? TreeUtils.findJavaParserNode(oldFile, src).orElse(null) : null;
+            jpDst = dst != null ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null) : null;
+        } catch (Exception e) {
+
+            //System.err.println("Error extracting JavaParser node" + e);
+        }
+
+        // 4) Build a uniform "before / after" context for any edit
+        List<String> context = new ArrayList<>();
+        try {
+            if (src != null) {
+                context.add("--- before ---");
+                context.addAll(TreeUtils.extractCtElementContext(oldFile, src, 1));
+            }
+            if (dst != null) {
+                context.add("--- after ---");
+                context.addAll(TreeUtils.extractCtElementContext(newFile, dst, 1));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error extracting context", e);
+        }
+
+        // 5) Construct and return the EditOperation
+        return new EditOperation(
+                type,
+                src,
+                dst,
+                jpSrc,
+                jpDst,
+                methodName,
+                context
+        );
+    }
+
+
+
+    private void classifyOperations(
+            List<Operation> ops,
+            Map<Operation, ClassifiedOperation> classification
+    ) {
+        for (var entry : changeClassifier.getRegisteredPatterns().entrySet()) {
+            MutationKind kind = entry.getKey();
+            ChangeClassifier.MutationPattern pattern = entry.getValue();
+            List<Operation> matches = pattern.matchingOperations(ops);
+            for (Operation o : matches) {
+                classification.get(o).addKind(kind);
+            }
+        }
+    }
+
+    private void updateMetrics(Collection<ClassifiedOperation> classified,
+                               Map<String, Integer> metrics) {
+        Set<MutationKind> kinds = classified.stream()
+                .flatMap(c -> c.getKinds().stream())
+                .collect(Collectors.toSet());
+        for (MutationKind k : kinds) {
+            metrics.merge(k.name(), 1, Integer::sum);
+        }
+    }
+
+    private void printDebugInfo(Collection<ClassifiedOperation> classified,
+                                String methodName) {
+        classified.forEach(c -> System.out.println(
+                c.getOperation().getAction().getName()
+                        + ": " + c.getKinds()
+        ));
+        System.out.printf("→ method %s had mutations %s%n",
+                methodName,
+                classified.stream()
+                        .flatMap(c -> c.getKinds().stream())
+                        .collect(Collectors.toSet()));
+    }
+
+    private List<EditOperation> extractUnmutated(
+            List<Operation> allRawOps,
+            Map<Operation, ClassifiedOperation> classification,
+            List<EditOperation> allOps
+    ) {
+        List<EditOperation> unmutated = new ArrayList<>();
+        for (int i = 0; i < allRawOps.size(); i++) {
+            Operation raw = allRawOps.get(i);
+
+            if (classification.get(raw).getKinds().isEmpty() ) {
+                unmutated.add(allOps.get(i));
+            }
+        }
+        return unmutated;
+    }
+
+    private List<EditOperation> mergeChildMovesIntoParent(List<EditOperation> edits) {
+        // We'll build a mutable copy
+        List<EditOperation> result = new ArrayList<>(edits);
+
+        // For each MOVE in the original list
+        for (EditOperation moveEo : edits) {
+            if (moveEo.type() != EditOperation.Type.MOVE) {
+                continue;
+            }
+            CtElement moved = moveEo.dstNode();
+
+            // Find the first DELETE/INSERT whose AST subtree contains the moved node
+            Optional<EditOperation> parentOpt = result.stream()
+                    .filter(e -> e.type() == EditOperation.Type.DELETE
+                            || e.type() == EditOperation.Type.INSERT)
+                    .filter(e -> {
+                        CtElement root = nodeOf(e);
+                        if (root == null) return false;
+                        // Does root’s subtree include moved?
+                        return root.getElements(new TypeFilter<>(CtElement.class))
+                                .contains(moved);
+                    })
+                    .findFirst();
+
+            if (parentOpt.isPresent()) {
+                EditOperation parent = parentOpt.get();
+                EditOperation updated;
+
+                // Reconstruct the parent edit with the new src/dst
+                if (parent.type() == EditOperation.Type.DELETE) {
+                    // For DELETE, update src to the moved node
+                    updated = new EditOperation(
+                            UPDATE,
+                            parent.srcNode(),
+                            moved,               // new dst
+                            parent.srcJavaNode(),
+                            parent.dstJavaNode(),
+                            parent.method(),
+                            parent.context()
+                    );
+                } else {
+                    // For INSERT, update dst to the moved node
+                    updated = new EditOperation(
+                            UPDATE,
+                            moved,        // new src
+                            parent.dstNode(),
+                            parent.srcJavaNode(),
+                            parent.dstJavaNode(),
+                            parent.method(),
+                            parent.context()
+                    );
+                }
+
+                // Replace the parent in our result list:
+                int idx = result.indexOf(parent);
+                result.set(idx, updated);
+
+                // Finally drop the MOVE itself:
+                result.remove(moveEo);
+            }
+        }
+
+        return result;
+    }
+
+    // helper to pull the relevant CtElement out of an EditOperation
+    private CtElement nodeOf(EditOperation eo) {
+        return switch (eo.type()) {
+            case DELETE  -> eo.srcNode();
+            case INSERT,
+                 MOVE,
+                 UPDATE  -> eo.dstNode();
+            default      -> null;
+        };
+    }
+
+
+    private String getCommitName(RevCommit commit) {
+        return commit != null ? commit.getName() : null;
     }
 
 

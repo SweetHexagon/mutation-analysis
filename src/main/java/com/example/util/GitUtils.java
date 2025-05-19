@@ -194,7 +194,7 @@ public class GitUtils {
                                             System.out.println("Block " + e + " has "
                                                     + blockMeanings + " meaningful lines");
                                         }
-                                        if (blockMeanings <= 2) {
+                                        if (blockMeanings <= 2) { //&& blockMeanings > 0) {
                                             sawExactOne = true;
                                         }
                                     }

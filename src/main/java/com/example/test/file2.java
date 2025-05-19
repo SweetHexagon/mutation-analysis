@@ -1,9 +1,11 @@
-import java.util.*;
+package com.example;
 
-public class EMPTY_RETURNS {
+import java.util.List;
 
-    public Collection<String> returnCollection() {
-        return Collections.emptyList();
-    } // -> emptyList()
-
+public class ListFactory {
+    // illegal: 'transient' may not appear on a method,
+    // and E is undeclared here → Spoon/javac will mark E as missing
+    public static transient List<E> of(E[] elements) {
+        return null;
+    }
 }

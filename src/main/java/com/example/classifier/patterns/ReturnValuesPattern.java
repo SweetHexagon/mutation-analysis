@@ -96,14 +96,9 @@ public class ReturnValuesPattern implements ChangeClassifier.MutationPattern {
         return List.of();
     }
 
-    private boolean isWithinReturn(CtElement e) {
-        // walk _all_ ancestors until we find a CtReturn or run out
-        for (CtElement cur = e; cur != null; cur = cur.getParent()) {
-            if (cur instanceof CtReturn<?>) {
-                return true;
-            }
-        }
-        return false;
+    private boolean isWithinReturn(CtElement element) {
+        // returns true if there’s a CtReturn anywhere above 'element'
+        return element.getParent(CtReturn.class) != null;
     }
 
 
