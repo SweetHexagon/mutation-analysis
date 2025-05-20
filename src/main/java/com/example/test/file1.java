@@ -4,9 +4,16 @@ import java.util.List;
 import java.util.Arrays;
 
 public class ListFactory {
-    // a perfectly valid generic varargs helper
-    public static <T> List<T> of(T... elements) {
-        // trivial implementation
-        return Arrays.asList(elements);
+    public <T extends CustomerRole> Optional<T> instance() {
+        var typeCst = this.typeCst;
+        try {
+            return (Optional<T>) Optional.of(typeCst.getDeclaredConstructor().newInstance());
+        } catch (InstantiationException
+                 | IllegalAccessException
+                 | NoSuchMethodException
+                 | InvocationTargetException e) {
+            logger.error("error creating an object", e);
+        }
+        return Optional.empty();
     }
 }

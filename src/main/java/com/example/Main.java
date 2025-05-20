@@ -48,10 +48,10 @@ public class Main implements CommandLineRunner {
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            //"https://github.com/SweetHexagon/pitest-mutators"
+            "https://github.com/SweetHexagon/pitest-mutators"
             //"https://github.com/Snailclimb/JavaGuide"            // 5 800 commits
             //"https://github.com/krahets/hello-algo"               // small
-            "https://github.com/iluwatar/java-design-patterns"    // 4 327 commits
+            ///////"https://github.com/iluwatar/java-design-patterns"    // 4 327 commits
             //"https://github.com/macrozheng/mall"                  // small
             ////"https://github.com/doocs/advanced-java",              // small
             //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
@@ -163,6 +163,10 @@ public class Main implements CommandLineRunner {
 
         final int total = batch.size();
         List<FileResultDto> batchResults = Collections.synchronizedList(new ArrayList<>());
+
+
+        //silence spoon jdt errors
+        System.setErr(new ErrorFilterPrintStream(System.err));
 
         for (CommitPairWithFiles pair : batch) {
             cs.submit(() -> {

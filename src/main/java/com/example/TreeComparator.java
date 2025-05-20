@@ -8,6 +8,9 @@ import com.example.util.TreeUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.*;
+
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,11 +35,11 @@ import java.io.File;
 
 import java.util.concurrent.TimeUnit;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.github.javaparser.ast.Node;
 import spoon.reflect.visitor.filter.TypeFilter;
-import spoon.support.Level;
 
 import static com.example.EditOperation.Type.*;
 
@@ -45,6 +48,8 @@ public class TreeComparator {
 
 
     private final ChangeClassifier changeClassifier;
+
+    private static final PrintStream REAL_ERR = System.err;
 
     @Autowired
     public TreeComparator(ChangeClassifier changeClassifier) {
@@ -82,7 +87,7 @@ public class TreeComparator {
         try {
             return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
         } catch (Exception e) {
-            if (debug) {
+            if (true) {
                 System.err.println("Failed comparing files: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
             }
             return null;
@@ -131,7 +136,6 @@ public class TreeComparator {
 
         CtModel oldModel = buildModel(oldFile);
         CtModel newModel = buildModel(newFile);
-
         stripComments(oldModel);
         stripComments(newModel);
 
@@ -182,22 +186,53 @@ public class TreeComparator {
         );
     }
 
+
     private CtModel buildModel(File file) {
         Launcher launcher = new Launcher();
+        Environment env = launcher.getEnvironment();
         launcher.addInputResource(file.getPath());
         launcher.buildModel();
         return launcher.getModel();
     }
+
+
+
+
+
+
+
 
     private void stripComments(CtModel model) {
         model.getElements(new TypeFilter<>(CtComment.class))
                 .forEach(CtComment::delete);
     }
 
-    private Map indexMethods(CtModel model) {
-        return model.getElements(new TypeFilter<>(CtMethod.class)).stream()
-                .collect(Collectors.toMap(CtMethod::getSignature, m -> m));
+
+    private Map<String, CtMethod<?>> indexMethods(CtModel model) {
+
+
+        return model.getElements(new TypeFilter<CtMethod<?>>(CtMethod.class))
+                .stream()
+                .collect(Collectors.<CtMethod<?>, String, CtMethod<?>>toMap(
+                        this::methodKey, //CtMethod::getSignature,
+                        Function.identity(),
+                        (first, second) -> {
+                            throw new IllegalStateException(
+                                    "Duplicate method signature encountered: " + first.getSignature()
+                            );
+                        }
+                ));
     }
+
+
+    private String methodKey(CtMethod<?> m) {
+        String declaring = m.getDeclaringType().getQualifiedName();
+        String params = m.getParameters().stream()
+                .map(p -> p.getType().getQualifiedName())
+                .collect(Collectors.joining(","));
+        return declaring + "#" + m.getSimpleName() + "(" + params + ")";
+    }
+
 
     private Map<String, Integer> initMetrics() {
         Map<String, Integer> metrics = new LinkedHashMap<>();

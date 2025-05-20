@@ -3,9 +3,16 @@ package com.example;
 import java.util.List;
 
 public class ListFactory {
-    // illegal: 'transient' may not appear on a method,
-    // and E is undeclared here → Spoon/javac will mark E as missing
-    public static transient List<E> of(E[] elements) {
-        return null;
+    public <T extends CustomerRole> Optional<T> instance() {
+        var typeCst = this.typeCst;
+        try {
+            return (Optional<T>) Optional.of(typeCst.getDeclaredConstructor().newInstance());
+        } catch (InstantiationException
+                 | IllegalAccessException
+                 | NoSuchMethodException
+                 | InvocationTargetException e) {
+            logger.error("error creating an object", e);
+        }
+        return Optional.empty();
     }
 }
