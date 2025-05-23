@@ -29,5 +29,6 @@ public enum MutationKind {
     ROR,
     TRUE_RETURNS,
     UOIP,
-    VOID_METHOD_CALL_REMOVAL
+    VOID_METHOD_CALL_REMOVAL,
+    SIMPLE_LITERAL_CHANGE
 }

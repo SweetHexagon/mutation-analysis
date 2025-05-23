@@ -8,6 +8,7 @@ import com.example.util.TreeUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.*;
+import spoon.support.visitor.clone.CloneBuilder;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -18,7 +19,8 @@ import org.springframework.stereotype.Component;
 import spoon.Launcher;
 import spoon.compiler.Environment;
 import spoon.reflect.CtModel;
-import spoon.reflect.code.CtComment;
+import spoon.reflect.code.*;
+import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtMethod;
 
 
@@ -39,6 +41,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.github.javaparser.ast.Node;
+import spoon.reflect.declaration.CtPackage;
+import spoon.reflect.reference.CtFieldReference;
+import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
 
 import static com.example.EditOperation.Type.*;
@@ -88,6 +93,8 @@ public class TreeComparator {
             return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
         } catch (Exception e) {
             if (true) {
+                System.out.println(oldFile);
+                System.out.println(newFile);
                 System.err.println("Failed comparing files: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
             }
             return null;
@@ -118,7 +125,7 @@ public class TreeComparator {
             return compareFiles(oldFile, newFile, fileName, null, null, debug);
         } catch (Exception e) {
             if (debug) {
-                System.err.println("Failed comparing files: " + e.getMessage());
+                System.err.println("Failed comparing files: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
             }
             return null;
         }
@@ -133,14 +140,15 @@ public class TreeComparator {
             boolean debug
     ) throws Exception {
         Stopwatch sw = Stopwatch.createStarted();
-
+        //System.out.println(oldFile.toString());
+        //System.out.println(newFile.toString());
         CtModel oldModel = buildModel(oldFile);
         CtModel newModel = buildModel(newFile);
         stripComments(oldModel);
         stripComments(newModel);
 
-        Map<String, CtMethod<?>> oldMap = indexMethods(oldModel);
-        Map<String, CtMethod<?>> newMap = indexMethods(newModel);
+        Map<String, CtPackage> oldMap = indexModelsBySingleMethod(oldModel);
+        Map<String, CtPackage> newMap = indexModelsBySingleMethod(newModel);
 
         AstComparator comparator = new AstComparator();
         List<EditOperation> allOps = new ArrayList<>();
@@ -148,14 +156,17 @@ public class TreeComparator {
         Map<Operation, ClassifiedOperation> classification = new LinkedHashMap<>();
         Map<String, Integer> metrics = initMetrics();
 
-        for (String sig : union(oldMap.keySet(), newMap.keySet())) {
-            CtMethod<?> oldMethod = oldMap.get(sig);
-            CtMethod<?> newMethod = newMap.get(sig);
-            String methodName = (newMethod != null ? newMethod : oldMethod).getSimpleName();
+        for (String sig : intersection(oldMap.keySet(), newMap.keySet())) {
+            CtPackage oldMethodModel = oldMap.get(sig);
+            CtPackage newMethodModel = newMap.get(sig);
+            String methodName = getMethodNameFromModel(
+                    (newMethodModel != null ? newMethodModel : oldMethodModel)
+            );
 
             if (debug) System.out.printf("– diffing %s%n", sig);
 
-            Diff diff = diffMethods(comparator, oldMethod, newMethod);
+            Diff diff = diffMethods(comparator, oldMethodModel, newMethodModel);
+
             processDiff(diff, oldFile, newFile, methodName, allOps, allRawOps, classification);
             classifyOperations(diff.getRootOperations(), classification);
             updateMetrics(classification.values(), metrics);
@@ -189,15 +200,14 @@ public class TreeComparator {
 
     private CtModel buildModel(File file) {
         Launcher launcher = new Launcher();
-        Environment env = launcher.getEnvironment();
+        //launcher.getEnvironment().setNoClasspath(true);
+        //launcher.getEnvironment().setIgnoreSyntaxErrors(true);
+        //launcher.getEnvironment().setAutoImports(false);
+        //launcher.getEnvironment().setShouldCompile(false);
         launcher.addInputResource(file.getPath());
         launcher.buildModel();
         return launcher.getModel();
     }
-
-
-
-
 
 
 
@@ -208,14 +218,12 @@ public class TreeComparator {
     }
 
 
-    private Map<String, CtMethod<?>> indexMethods(CtModel model) {
-
-
+    public Map<String, CtMethod<?>> indexMethods(CtModel model) {
         return model.getElements(new TypeFilter<CtMethod<?>>(CtMethod.class))
                 .stream()
-                .collect(Collectors.<CtMethod<?>, String, CtMethod<?>>toMap(
-                        this::methodKey, //CtMethod::getSignature,
-                        Function.identity(),
+                .collect(Collectors.toMap(
+                        this::methodKey,         // method signature as key
+                        CtMethod::clone,
                         (first, second) -> {
                             throw new IllegalStateException(
                                     "Duplicate method signature encountered: " + first.getSignature()
@@ -223,7 +231,61 @@ public class TreeComparator {
                         }
                 ));
     }
+    public Map<String, CtPackage> indexModelsBySingleMethod(CtModel model) {
+        Map<String, CtPackage> result = new HashMap<>();
 
+        for (CtMethod<?> original : model.getElements(new TypeFilter<>(CtMethod.class))) {
+            String key = methodKey(original);
+            if (result.containsKey(key)) {
+                throw new IllegalStateException("Duplicate method signature encountered: " + original.getSignature());
+            }
+
+            CtPackage clonedRoot = model.getRootPackage().clone();
+
+            // Find the cloned method in the clonedRoot
+            CtMethod<?> clonedMethod = findClonedMethod(clonedRoot, original);
+
+            if (clonedMethod != null) {
+                // Collect all methods to keep: the cloned method and its containing methods
+                Set<CtMethod<?>> methodsToKeep = new HashSet<>();
+                methodsToKeep.add(clonedMethod);
+                collectContainingMethods(clonedMethod, methodsToKeep);
+
+                // Delete all other methods not in the hierarchy
+                for (CtMethod<?> m : clonedRoot.getElements(new TypeFilter<>(CtMethod.class))) {
+                    if (!methodsToKeep.contains(m)) {
+                        m.delete();
+                    }
+                }
+            }
+
+            result.put(key, clonedRoot);
+        }
+
+        return result;
+    }
+
+    private CtMethod<?> findClonedMethod(CtPackage clonedRoot, CtMethod<?> original) {
+        // Find the corresponding method in the cloned package by signature
+        return clonedRoot.getElements(new TypeFilter<>(CtMethod.class)).stream()
+                .filter(m -> methodKey(m).equals(methodKey(original)))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void collectContainingMethods(CtMethod<?> method, Set<CtMethod<?>> methods) {
+        CtElement parent = method.getParent();
+        while (parent != null) {
+            if (parent instanceof CtMethod) {
+                methods.add((CtMethod<?>) parent);
+            }
+            parent = parent.getParent();
+        }
+    }
+
+    public String getMethodNameFromModel(CtPackage tree){
+        return tree.getElements(new TypeFilter<>(CtMethod.class)).getFirst().getSimpleName();
+    }
 
     private String methodKey(CtMethod<?> m) {
         String declaring = m.getDeclaringType().getQualifiedName();
@@ -242,18 +304,15 @@ public class TreeComparator {
         return metrics;
     }
 
-    private Set<String> union(Set<String> a, Set<String> b) {
-        Set<String> all = new HashSet<>(a);
-        all.addAll(b);
-        return all;
+    private Set<String> intersection(Set<String> a, Set<String> b) {
+        Set<String> common = new HashSet<>(a);
+        common.retainAll(b);
+        return common;
     }
 
     private Diff diffMethods(AstComparator comparator,
-                             CtMethod<?> oldMethod,
-                             CtMethod<?> newMethod) {
-        CtElement left = oldMethod != null ? oldMethod.clone() : newMethod.clone();
-        CtElement right = newMethod != null ? newMethod.clone() : oldMethod.clone();
-        return comparator.compare(left, right);
+                             CtPackage oldMethodModel, CtPackage newMethodModel) {
+        return comparator.compare(oldMethodModel.clone(), newMethodModel.clone());
     }
 
     private void processDiff(
@@ -401,69 +460,63 @@ public class TreeComparator {
     }
 
     private List<EditOperation> mergeChildMovesIntoParent(List<EditOperation> edits) {
-        // We'll build a mutable copy
+        // make a copy so we can remove elements safely
         List<EditOperation> result = new ArrayList<>(edits);
 
-        // For each MOVE in the original list
-        for (EditOperation moveEo : edits) {
+        // iterate over a snapshot of the original list
+        for (EditOperation moveEo : new ArrayList<>(edits)) {
             if (moveEo.type() != EditOperation.Type.MOVE) {
                 continue;
             }
             CtElement moved = moveEo.dstNode();
 
-            // Find the first DELETE/INSERT whose AST subtree contains the moved node
+            // find the enclosing DELETE or INSERT
             Optional<EditOperation> parentOpt = result.stream()
                     .filter(e -> e.type() == EditOperation.Type.DELETE
                             || e.type() == EditOperation.Type.INSERT)
                     .filter(e -> {
                         CtElement root = nodeOf(e);
-                        if (root == null) return false;
-                        // Does root’s subtree include moved?
-                        return root.getElements(new TypeFilter<>(CtElement.class))
+                        return root != null
+                                && root.getElements(new TypeFilter<>(CtElement.class))
                                 .contains(moved);
                     })
                     .findFirst();
 
             if (parentOpt.isPresent()) {
                 EditOperation parent = parentOpt.get();
-                EditOperation updated;
 
-                // Reconstruct the parent edit with the new src/dst
-                if (parent.type() == EditOperation.Type.DELETE) {
-                    // For DELETE, update src to the moved node
-                    updated = new EditOperation(
-                            UPDATE,
-                            parent.srcNode(),
-                            moved,               // new dst
-                            parent.srcJavaNode(),
-                            parent.dstJavaNode(),
-                            parent.method(),
-                            parent.context()
-                    );
-                } else {
-                    // For INSERT, update dst to the moved node
-                    updated = new EditOperation(
-                            UPDATE,
-                            moved,        // new src
-                            parent.dstNode(),
-                            parent.srcJavaNode(),
-                            parent.dstJavaNode(),
-                            parent.method(),
-                            parent.context()
-                    );
-                }
+                // **key change**: grab the full before/after from the MOVE
+                List<String> fullContext = new ArrayList<>(moveEo.context());
 
-                // Replace the parent in our result list:
+                // for DELETE→UPDATE: src stays the deleted node, dst becomes the moved node
+                // for INSERT→UPDATE: src becomes the moved node, dst stays the inserted node
+                CtElement newSrc = parent.type() == EditOperation.Type.DELETE
+                        ? parent.srcNode()
+                        : moved;
+                CtElement newDst = parent.type() == EditOperation.Type.DELETE
+                        ? moved
+                        : parent.dstNode();
+
+                EditOperation updated = new EditOperation(
+                        EditOperation.Type.UPDATE,
+                        newSrc,
+                        newDst,
+                        parent.srcJavaNode(),
+                        parent.dstJavaNode(),
+                        parent.method(),
+                        fullContext
+                );
+
+                // swap out the parent for our new UPDATE, and drop the MOVE
                 int idx = result.indexOf(parent);
                 result.set(idx, updated);
-
-                // Finally drop the MOVE itself:
                 result.remove(moveEo);
             }
         }
 
         return result;
     }
+
 
     // helper to pull the relevant CtElement out of an EditOperation
     private CtElement nodeOf(EditOperation eo) {

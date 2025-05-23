@@ -48,13 +48,13 @@ public class Main implements CommandLineRunner {
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            "https://github.com/SweetHexagon/pitest-mutators"
-            //"https://github.com/Snailclimb/JavaGuide"            // 5 800 commits
+            //"https://github.com/SweetHexagon/pitest-mutators"
+            "https://github.com/Snailclimb/JavaGuide"            // 5 800 commits
             //"https://github.com/krahets/hello-algo"               // small
             ///////"https://github.com/iluwatar/java-design-patterns"    // 4 327 commits
             //"https://github.com/macrozheng/mall"                  // small
             ////"https://github.com/doocs/advanced-java",              // small
-            //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
+            // "https://github.com/spring-projects/spring-boot"     // 54 313 commits
             ////"https://github.com/MisterBooo/LeetCodeAnimation",     // small
             //"https://github.com/elastic/elasticsearch",            // 86 296 commits
             ////"https://github.com/kdn251/interviews",                // small
@@ -144,12 +144,13 @@ public class Main implements CommandLineRunner {
 
                 long used = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
                 System.out.println("Memory used (MB): " + used / (1024 * 1024));
+                break;
             }
 
             JsonUtils.appendPatternCounts(repoUrl, repoPatternCounts);
             System.out.println("Wrote patternCounts for " + repoName);
 
-            //JsonUtils.filterUniqueOperations(repoUrl);
+            JsonUtils.filterUniqueOperations(repoUrl);
 
             repoManager.closeRepository();
 

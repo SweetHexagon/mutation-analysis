@@ -52,7 +52,9 @@ public class ChangeClassifier {
             Map.entry(MutationKind.ROR,                      new RORPattern()),
             Map.entry(MutationKind.TRUE_RETURNS,             new TrueReturnsPattern()),
             Map.entry(MutationKind.UOIP,                     new UOIPattern()),
-            Map.entry(MutationKind.VOID_METHOD_CALL_REMOVAL, new VoidMethodCallRemovalPattern())
+            Map.entry(MutationKind.VOID_METHOD_CALL_REMOVAL, new VoidMethodCallRemovalPattern()),
+            Map.entry(MutationKind.SIMPLE_LITERAL_CHANGE, new SimpleLiteralChangePattern())
+
     );
 
     /** Expose the enum→pattern map so you can do entrySet() on it */
