@@ -23,6 +23,8 @@ application {
 }
 
 dependencies {
+    implementation("ch.qos.logback:logback-classic:1.4.14")
+
     implementation("fr.inria.gforge.spoon.labs:gumtree-spoon-ast-diff:1.110")
 
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")

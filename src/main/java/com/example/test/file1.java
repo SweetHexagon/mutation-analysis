@@ -1,6 +1,5 @@
-public class ABS {
-    public int negate(int i) {
-        String a = "aw";
-        return -i;
-    }      // mutated to negate value
+public class UOI {
+    public int uoi1(int i) {
+        return i;
+    }
 }

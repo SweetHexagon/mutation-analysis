@@ -4,6 +4,7 @@ package com.example;
 import com.example.classifier.ChangeClassifier;
 import com.example.classifier.MutationKind;
 import com.example.pojo.ClassifiedOperation;
+import com.example.service.GitRepositoryManager;
 import com.example.util.TreeUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
@@ -12,6 +13,7 @@ import spoon.support.visitor.clone.CloneBuilder;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.file.Paths;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,18 +52,17 @@ import static com.example.EditOperation.Type.*;
 
 @Component
 public class TreeComparator {
-
+    private static long maxDiffTimeMs = 0;
 
     private final ChangeClassifier changeClassifier;
-
-    private static final PrintStream REAL_ERR = System.err;
-
+    private final GitRepositoryManager gitRepositoryManager;
     @Autowired
-    public TreeComparator(ChangeClassifier changeClassifier) {
+    public TreeComparator(ChangeClassifier changeClassifier, GitRepositoryManager gitRepositoryManager) {
         this.changeClassifier = changeClassifier;
+        this.gitRepositoryManager = gitRepositoryManager;
     }
     
-    private  final Logger log = LoggerFactory.getLogger(TreeComparator.class);
+    private  final Logger log = LoggerFactory.getLogger("fileOnlyLogger");
 
     public  FileResult compareFileInTwoCommits(String localPath, RevCommit oldCommit, RevCommit newCommit, String fileName) {
         return compareFileInTwoCommits(localPath, oldCommit, newCommit, fileName, false);
@@ -92,7 +93,7 @@ public class TreeComparator {
         try {
             return compareFiles(oldFile, newFile, fileName, oldCommit, newCommit, debug);
         } catch (Exception e) {
-            if (true) {
+            if (debug) {
                 System.out.println(oldFile);
                 System.out.println(newFile);
                 System.err.println("Failed comparing files: " + e.getMessage() + Arrays.toString(e.getStackTrace()));
@@ -147,8 +148,8 @@ public class TreeComparator {
         stripComments(oldModel);
         stripComments(newModel);
 
-        Map<String, CtPackage> oldMap = indexModelsBySingleMethod(oldModel);
-        Map<String, CtPackage> newMap = indexModelsBySingleMethod(newModel);
+        Map<String, CtMethod<?>> oldMap = indexMethods(oldModel);
+        Map<String, CtMethod<?>> newMap = indexMethods(newModel);
 
         AstComparator comparator = new AstComparator();
         List<EditOperation> allOps = new ArrayList<>();
@@ -157,15 +158,13 @@ public class TreeComparator {
         Map<String, Integer> metrics = initMetrics();
 
         for (String sig : intersection(oldMap.keySet(), newMap.keySet())) {
-            CtPackage oldMethodModel = oldMap.get(sig);
-            CtPackage newMethodModel = newMap.get(sig);
-            String methodName = getMethodNameFromModel(
-                    (newMethodModel != null ? newMethodModel : oldMethodModel)
-            );
+            CtMethod<?> oldMethod = oldMap.get(sig);
+            CtMethod<?> newMethod = newMap.get(sig);
+            String methodName = (newMethod != null ? newMethod.getSignature() : oldMethod.getSignature());
 
             if (debug) System.out.printf("– diffing %s%n", sig);
 
-            Diff diff = diffMethods(comparator, oldMethodModel, newMethodModel);
+            Diff diff = diffMethods(comparator, oldMethod, newMethod);
 
             processDiff(diff, oldFile, newFile, methodName, allOps, allRawOps, classification);
             classifyOperations(diff.getRootOperations(), classification);
@@ -182,9 +181,21 @@ public class TreeComparator {
                 allOps.size()
         );
 
+
+        long elapsedMs = sw.elapsed(TimeUnit.MILLISECONDS);
+
+        synchronized (TreeComparator.class) {
+            if (elapsedMs > maxDiffTimeMs) {
+                maxDiffTimeMs = elapsedMs;
+                String repoPath = gitRepositoryManager.getCurrentRepository().getIdentifier();
+                log.info("Longest AST diff so far: File '{}', Repo '{}', Time {} ms, Ops: {}, Old SHA: {}, New SHA: {}",
+                        fileName, repoPath, elapsedMs, allOps.size(), oldCommit.getName(), newCommit.getName());
+            }
+        }
+
         List<EditOperation> unmutated = extractUnmutated(allRawOps, classification, allOps);
 
-        List<EditOperation> filteredMoveOperations = mergeChildMovesIntoParent(unmutated);
+        List<EditOperation> filteredMoveOperations = mergeDeletesAndInsertsIntoUpdates(mergeChildMovesIntoParent(unmutated));
 
         return createFileResult(
                 fileName,
@@ -200,10 +211,13 @@ public class TreeComparator {
 
     private CtModel buildModel(File file) {
         Launcher launcher = new Launcher();
-        //launcher.getEnvironment().setNoClasspath(true);
-        //launcher.getEnvironment().setIgnoreSyntaxErrors(true);
-        //launcher.getEnvironment().setAutoImports(false);
-        //launcher.getEnvironment().setShouldCompile(false);
+        /*launcher.getEnvironment().setCommentEnabled(false);
+        launcher.getEnvironment().setNoClasspath(true);
+        launcher.getEnvironment().setIgnoreSyntaxErrors(true);
+        launcher.getEnvironment().setAutoImports(false);
+        launcher.getEnvironment().setShouldCompile(false);
+        */
+
         launcher.addInputResource(file.getPath());
         launcher.buildModel();
         return launcher.getModel();
@@ -230,47 +244,6 @@ public class TreeComparator {
                             );
                         }
                 ));
-    }
-    public Map<String, CtPackage> indexModelsBySingleMethod(CtModel model) {
-        Map<String, CtPackage> result = new HashMap<>();
-
-        for (CtMethod<?> original : model.getElements(new TypeFilter<>(CtMethod.class))) {
-            String key = methodKey(original);
-            if (result.containsKey(key)) {
-                throw new IllegalStateException("Duplicate method signature encountered: " + original.getSignature());
-            }
-
-            CtPackage clonedRoot = model.getRootPackage().clone();
-
-            // Find the cloned method in the clonedRoot
-            CtMethod<?> clonedMethod = findClonedMethod(clonedRoot, original);
-
-            if (clonedMethod != null) {
-                // Collect all methods to keep: the cloned method and its containing methods
-                Set<CtMethod<?>> methodsToKeep = new HashSet<>();
-                methodsToKeep.add(clonedMethod);
-                collectContainingMethods(clonedMethod, methodsToKeep);
-
-                // Delete all other methods not in the hierarchy
-                for (CtMethod<?> m : clonedRoot.getElements(new TypeFilter<>(CtMethod.class))) {
-                    if (!methodsToKeep.contains(m)) {
-                        m.delete();
-                    }
-                }
-            }
-
-            result.put(key, clonedRoot);
-        }
-
-        return result;
-    }
-
-    private CtMethod<?> findClonedMethod(CtPackage clonedRoot, CtMethod<?> original) {
-        // Find the corresponding method in the cloned package by signature
-        return clonedRoot.getElements(new TypeFilter<>(CtMethod.class)).stream()
-                .filter(m -> methodKey(m).equals(methodKey(original)))
-                .findFirst()
-                .orElse(null);
     }
 
     private void collectContainingMethods(CtMethod<?> method, Set<CtMethod<?>> methods) {
@@ -311,8 +284,8 @@ public class TreeComparator {
     }
 
     private Diff diffMethods(AstComparator comparator,
-                             CtPackage oldMethodModel, CtPackage newMethodModel) {
-        return comparator.compare(oldMethodModel.clone(), newMethodModel.clone());
+                             CtMethod<?> oldMethod, CtMethod<?> newMethod) {
+        return comparator.compare(oldMethod.clone(), newMethod.clone());
     }
 
     private void processDiff(
@@ -380,14 +353,14 @@ public class TreeComparator {
         // 4) Build a uniform "before / after" context for any edit
         List<String> context = new ArrayList<>();
         try {
-            if (src != null) {
-                context.add("--- before ---");
-                context.addAll(TreeUtils.extractCtElementContext(oldFile, src, 1));
-            }
-            if (dst != null) {
-                context.add("--- after ---");
-                context.addAll(TreeUtils.extractCtElementContext(newFile, dst, 1));
-            }
+                if (src != null) {
+                    context.add(EditOperation.BEFORE_MARKER);
+                    context.addAll(TreeUtils.extractCtElementContext(oldFile, src, 1));
+                }
+                if (dst != null) {
+                    context.add(EditOperation.AFTER_MARKER);
+                    context.addAll(TreeUtils.extractCtElementContext(newFile, dst, 1));
+                }
         } catch (Exception e) {
             throw new RuntimeException("Error extracting context", e);
         }
@@ -486,16 +459,24 @@ public class TreeComparator {
                 EditOperation parent = parentOpt.get();
 
                 // **key change**: grab the full before/after from the MOVE
-                List<String> fullContext = new ArrayList<>(moveEo.context());
+                List<String> fullContext = new ArrayList<>();
 
-                // for DELETE→UPDATE: src stays the deleted node, dst becomes the moved node
-                // for INSERT→UPDATE: src becomes the moved node, dst stays the inserted node
-                CtElement newSrc = parent.type() == EditOperation.Type.DELETE
+                if (parent.type() == EditOperation.Type.DELETE) {
+                    fullContext.addAll(parent.context());
+                    fullContext.add(EditOperation.AFTER_MARKER);
+                    fullContext.addAll(moveEo.extractAfterContext());
+                }else {
+                    fullContext.add(EditOperation.BEFORE_MARKER);
+                    fullContext.addAll(moveEo.extractBeforeContext());
+                    fullContext.addAll(parent.context());
+                }
+
+                CtElement newSrc = parent.type() == DELETE
                         ? parent.srcNode()
                         : moved;
-                CtElement newDst = parent.type() == EditOperation.Type.DELETE
-                        ? moved
-                        : parent.dstNode();
+                CtElement newDst = parent.type() == INSERT
+                        ? parent.dstNode()
+                        : moved;
 
                 EditOperation updated = new EditOperation(
                         EditOperation.Type.UPDATE,
@@ -515,6 +496,53 @@ public class TreeComparator {
         }
 
         return result;
+    }
+
+    private List<EditOperation> mergeDeletesAndInsertsIntoUpdates(List<EditOperation> edits) {
+        List<EditOperation> result = new ArrayList<>(edits);
+        List<EditOperation> deletes = result.stream()
+                .filter(e -> e.type() == EditOperation.Type.DELETE)
+                .toList();
+        List<EditOperation> inserts = result.stream()
+                .filter(e -> e.type() == EditOperation.Type.INSERT)
+                .toList();
+
+        for (EditOperation deleteOp : deletes) {
+            for (EditOperation insertOp : inserts) {
+                if (haveSameParent(deleteOp, insertOp)) {
+                    // Combine into UPDATE
+                    List<String> context = new ArrayList<>();
+                    context.addAll(deleteOp.context());
+                    context.addAll(insertOp.context());
+
+                    EditOperation update = new EditOperation(
+                            EditOperation.Type.UPDATE,
+                            deleteOp.srcNode(),
+                            insertOp.dstNode(),
+                            deleteOp.srcJavaNode(),
+                            insertOp.dstJavaNode(),
+                            deleteOp.method(),
+                            context
+                    );
+
+                    // Replace DELETE and INSERT with UPDATE
+                    result.remove(deleteOp);
+                    result.remove(insertOp);
+                    result.add(update);
+
+                    // Since we modified the list, break and restart outer loop
+                    return mergeDeletesAndInsertsIntoUpdates(result);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private boolean haveSameParent(EditOperation a, EditOperation b) {
+        CtElement aParent = a.srcNode() != null ? a.srcNode().getParent() : null;
+        CtElement bParent = b.dstNode() != null ? b.dstNode().getParent() : null;
+        return aParent != null && bParent != null && aParent.getClass().getSimpleName().equals(bParent.getClass().getSimpleName());
     }
 
 

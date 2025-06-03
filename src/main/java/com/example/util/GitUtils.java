@@ -185,7 +185,7 @@ public class GitUtils {
                                     }
 
                                     // for every block, count the meaningful lines
-                                    boolean sawExactOne = false;
+                                    boolean pass = true;
                                     for (Edit e : edits) {
                                         int blockMeanings = DiffUtils.countMeaningfulChangedLinesInBlock(
                                                 repository, oldC, newC, d, e);
@@ -194,13 +194,13 @@ public class GitUtils {
                                             System.out.println("Block " + e + " has "
                                                     + blockMeanings + " meaningful lines");
                                         }
-                                        if (blockMeanings <= 2 && blockMeanings > 0) {
-                                            sawExactOne = true;
+                                        if (blockMeanings > 2) {
+                                            pass = false;
                                         }
                                     }
 
                                     // passed: every block had exactly one meaningful changed line
-                                    return sawExactOne;
+                                    return pass;
                                 } catch (IOException io) {
                                     if (debug) io.printStackTrace();
                                     return false;

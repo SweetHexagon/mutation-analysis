@@ -7,6 +7,7 @@ import spoon.reflect.declaration.CtElement;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,7 +25,8 @@ public record EditOperation(
 ) {
 
     public enum Type { INSERT, DELETE, UPDATE, MOVE }
-
+    public static final String BEFORE_MARKER = "--- before ---";
+    public static final String AFTER_MARKER  = "--- after ---";
 
 
     @Override
@@ -55,14 +57,45 @@ public record EditOperation(
     private static String safeNodeText(CtElement element) {
         if (element == null) return "<null>";
         try {
-            // trim whitespace/newlines
-            return element.toString().replaceAll("\\s+", " ").trim();
+            // Trim whitespace/newlines
+            String raw = element.toString().replaceAll("\\s+", " ").trim();
+
+            // Remove fully qualified class names (keep only the class name)
+            return raw.replaceAll("\\b([a-zA-Z_][\\w$]*\\.)+([A-Z][\\w$]*)", "$2");
         } catch (Exception e) {
             return "<error rendering node>";
         }
     }
 
-
-
+    public List<String> extractBeforeContext(){
+        List<String> result = new ArrayList<>();
+        boolean inBeforeSection = false;
+        for (String line : context) {
+            if (line.trim().equals(BEFORE_MARKER)) {
+                inBeforeSection = true;
+                continue;
+            }
+            if (line.trim().equals(AFTER_MARKER)) {
+                break;
+            }
+            if (inBeforeSection) {
+                result.add(line);
+            }
+        }
+        return result;
+    }
+    public List<String> extractAfterContext() {
+        List<String> result = new ArrayList<>();
+        boolean inAfterSection = false;
+        for (String line : context) {
+            if (inAfterSection) {
+                result.add(line);
+            }
+            if (line.trim().equals(AFTER_MARKER)) {
+                inAfterSection = true;
+            }
+        }
+        return result;
+    }
 
 }

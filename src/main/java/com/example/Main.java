@@ -13,6 +13,12 @@ import com.example.service.GitRepositoryManager;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
 import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.errors.AmbiguousObjectException;
+import org.eclipse.jgit.errors.IncorrectObjectTypeException;
+import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.SpringApplication;
@@ -27,48 +33,49 @@ import java.util.concurrent.*;
 public class Main implements CommandLineRunner {
     private final GitRepositoryManager repoManager;
     private final TreeComparator      treeComparator;
+    private final GitUtils gitUtils;
     EnumMap<MutationKind,Integer> repoPatternCounts =
             new EnumMap<>(MutationKind.class);
 
 
     public Main(GitRepositoryManager repoManager,
-                TreeComparator treeComparator) {
+                TreeComparator treeComparator, GitUtils gitUtils) {
         this.repoManager     = repoManager;
         this.treeComparator  = treeComparator;
-
+        this.gitUtils = gitUtils;
     }
 
 
      String localPath = "repositories";
 
-    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
+    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
 
      final int BATCH_SIZE = 500;
 
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            //"https://github.com/SweetHexagon/pitest-mutators"
-            "https://github.com/Snailclimb/JavaGuide"            // 5 800 commits
-            //"https://github.com/krahets/hello-algo"               // small
-            ///////"https://github.com/iluwatar/java-design-patterns"    // 4 327 commits
-            //"https://github.com/macrozheng/mall"                  // small
-            ////"https://github.com/doocs/advanced-java",              // small
-            // "https://github.com/spring-projects/spring-boot"     // 54 313 commits
-            ////"https://github.com/MisterBooo/LeetCodeAnimation",     // small
-            //"https://github.com/elastic/elasticsearch",            // 86 296 commits
-            ////"https://github.com/kdn251/interviews",                // small
-            ////"https://github.com/TheAlgorithms/Java",               // 2 729 commits
-            //"https://github.com/spring-projects/spring-framework", // 32 698 commits
-            ////"https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
-            ////"https://github.com/Stirling-Tools/Stirling-PDF",      // small
-            ////"https://github.com/google/guava",                     // 6 901 commits
-            ////"https://github.com/ReactiveX/RxJava",                 // 6 218 commits
-            ////"https://github.com/skylot/jadx",                      // small
-            //"https://github.com/dbeaver/dbeaver"                  // 27 028 commits
-            ////"https://github.com/jeecgboot/JeecgBoot",              // small
-            ////"https://github.com/apache/dubbo",                     // 8 414 commits
-            ////"https://github.com/termux/termux-app"                 // small
+            /*"https://github.com/SweetHexagon/pitest-mutators"
+            "https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
+            "https://github.com/krahets/hello-algo",               // small
+            "https://github.com/iluwatar/java-design-patterns"   , // 4 327 commits
+            "https://github.com/macrozheng/mall"   ,               // small
+             "https://github.com/doocs/advanced-java",           // small
+            "https://github.com/spring-projects/spring-boot",     // 54 313 commits
+            "https://github.com/MisterBooo/LeetCodeAnimation",     // small
+            "https://github.com/elastic/elasticsearch",            // 86 296 commits
+            "https://github.com/kdn251/interviews",                // small
+            "https://github.com/TheAlgorithms/Java",               // 2 729 commits
+            */ "https://github.com/spring-projects/spring-framework"/* // 32 698 commits
+            "https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
+             "https://github.com/Stirling-Tools/Stirling-PDF",      // small
+            "https://github.com/google/guava",                     // 6 901 commits
+            "https://github.com/ReactiveX/RxJava",                 // 6 218 commits
+            "https://github.com/skylot/jadx",                      // small
+            "https://github.com/dbeaver/dbeaver",                  // 27 028 commits
+            "https://github.com/jeecgboot/JeecgBoot",              // small
+            "https://github.com/apache/dubbo",                     // 8 414 commits
+            "https://github.com/termux/termux-app"   */              // small
     );
 
 
@@ -144,7 +151,6 @@ public class Main implements CommandLineRunner {
 
                 long used = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
                 System.out.println("Memory used (MB): " + used / (1024 * 1024));
-                break;
             }
 
             JsonUtils.appendPatternCounts(repoUrl, repoPatternCounts);
@@ -158,30 +164,35 @@ public class Main implements CommandLineRunner {
         }
     }
 
-    private  void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
+    private void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
+        long totalStart = System.currentTimeMillis();
+
         ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
         CompletionService<CommitPairWithFiles> cs = new ExecutorCompletionService<>(exec);
 
         final int total = batch.size();
         List<FileResultDto> batchResults = Collections.synchronizedList(new ArrayList<>());
 
-
-        //silence spoon jdt errors
+        // Silence spoon jdt errors
         System.setErr(new ErrorFilterPrintStream(System.err));
 
+        long submissionStart = System.currentTimeMillis();
         for (CommitPairWithFiles pair : batch) {
             cs.submit(() -> {
                 for (String file : pair.changedFiles()) {
+                    long comparisonStart = System.nanoTime();
                     FileResult result = treeComparator.compareFileInTwoCommits(
                             repoDir, pair.oldCommit(), pair.newCommit(), file, false
                     );
+                    long comparisonEnd = System.nanoTime();
+                    //System.out.printf("Time to compare file %s: %.2f ms%n", file, (comparisonEnd - comparisonStart) / 1_000_000.0);
+
                     if (result != null) {
-                        // 1) Immediately merge its file‐level metrics into your repo‐wide counters
                         Map<String,Integer> fileMetrics = result.getMetrics();
                         if (fileMetrics != null) {
                             for (var entry : fileMetrics.entrySet()) {
                                 String metricName = entry.getKey().toString();
-                                int    count      = entry.getValue();
+                                int count = entry.getValue();
                                 try {
                                     MutationKind kind = MutationKind.valueOf(metricName);
                                     repoPatternCounts.merge(kind, count, Integer::sum);
@@ -191,20 +202,20 @@ public class Main implements CommandLineRunner {
                             }
                         }
 
-                        // 2) still map to DTO and collect for JSON output
                         if (!result.getEditOperations().isEmpty()) {
                             FileResultDto dto = ResultMapper.toDto(result);
                             batchResults.add(dto);
                         }
-
                     }
                 }
                 return pair;
             });
         }
-
+        long submissionEnd = System.currentTimeMillis();
+        System.out.printf("Time to submit tasks: %.2f seconds%n", (submissionEnd - submissionStart) / 1000.0);
 
         int completed = 0;
+        long processingStart = System.currentTimeMillis();
         while (completed < total) {
             try {
                 Future<CommitPairWithFiles> future = cs.take();
@@ -215,14 +226,23 @@ public class Main implements CommandLineRunner {
                 System.err.println("Task failed: " + e.getMessage());
             }
         }
+        long processingEnd = System.currentTimeMillis();
+        System.out.printf("Time to process batch: %.2f seconds%n", (processingEnd - processingStart) / 1000.0);
 
         exec.shutdown();
         System.out.println();
 
+        long jsonStart = System.currentTimeMillis();
         JsonUtils.appendBatchResults(repoUrl, batchResults);
         batchResults.clear();
+        long jsonEnd = System.currentTimeMillis();
+        System.out.printf("Time to write JSON results: %.2f seconds%n", (jsonEnd - jsonStart) / 1000.0);
+
         System.gc();
+        long totalEnd = System.currentTimeMillis();
+        System.out.printf("Total time for processBatch: %.2f seconds%n", (totalEnd - totalStart) / 1000.0);
     }
+
 
     private  void printProgressBar(int current, int total) {
         int width = 50;
@@ -239,33 +259,38 @@ public class Main implements CommandLineRunner {
 
     public  void manualTest() {
 
-        String repoName = "hello-algo";
-        String oldSha = "2bba70fd87cc108e827954122180450712b8a177";
-        String newSha = "e03022d5fb15b998e569755e1847bf0954acae94";
-        String relativePath = "codes/java/chapter_computational_complexity/time_complexity.java";
-        String outputDir = "D:\\Java projects\\mutation-analysis\\src\\main\\resources\\extractedFiles";
 
+        String localRepoName = "D:\\Java projects\\mutation-analysis\\repositories\\spring-framework\\.git";
+        String oldSha = "253f321e8b81aa5f652117514c37cb541f2e5ecf";
+        String newSha = "014a395aed7b3f40bb05f1591149e833f2bf7537";
+        String fileName = "spring-context/src/test/java/org/springframework/aop/framework/AbstractAopProxyTests.java";
+
+        String outputDir = "D:\\Java projects\\mutation-analysis\\src\\main\\resources\\extractedFiles";
         cleanUp(outputDir);
 
-        //List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath + "\\" + repoName, relativePath, oldSha, newSha, outputDir);
-        List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
-        if (extractedPaths.size() == 2) {
 
-            //String oldFilePath = extractedPaths.get(0);
-            //String newFilePath = extractedPaths.get(1);
-            //printFileContents("Old File", oldFilePath);
-            //printFileContents("New File", newFilePath);
-
-            FileResult result = treeComparator.compareTwoFilePaths(extractedPaths.get(0), extractedPaths.get(1), true);
-
-            if (result != null) {
-                System.out.println(result);
-            } else {
-                System.out.println("Comparison failed.");
-            }
-        } else {
-            System.out.println("File extraction failed.");
+        Repository repo = GitUtils.ensureClonedAndLoaded("", localRepoName);
+        RevCommit oldCommit = null;
+        RevCommit newCommit = null;
+        try (RevWalk walk = new RevWalk(repo)) {
+            oldCommit = walk.parseCommit(repo.resolve(oldSha));
+            newCommit = walk.parseCommit(repo.resolve(newSha));
+        } catch (Exception exception){
+            exception.printStackTrace();
         }
+
+
+        //List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath + "\\" + localRepoName, relativePath, oldSha, newSha, outputDir);
+        //List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
+
+        FileResult result = treeComparator.compareFileInTwoCommits("", oldCommit, newCommit, fileName, true);
+
+        if (result != null) {
+            System.out.println(result);
+        } else {
+            System.out.println("Comparison failed.");
+        }
+
     }
 
     public  void cleanUp(String path) {

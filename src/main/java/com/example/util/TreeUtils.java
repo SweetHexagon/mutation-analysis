@@ -17,6 +17,7 @@ import spoon.reflect.declaration.CtElement;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -179,6 +180,9 @@ public class TreeUtils {
             CtElement element,
             int radius
     ) throws IOException {
+        if (radius == 0){
+            return Arrays.asList( element.toString().replaceAll("\\b([a-zA-Z_][\\w$]*\\.)+([A-Z][\\w$]*)", "$2").split("\\R") );
+        }
         List<String> all = Files.readAllLines(file.toPath());
         if (!element.getPosition().isValidPosition()) {
             return List.of();
