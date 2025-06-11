@@ -187,9 +187,20 @@ public class TreeComparator {
         synchronized (TreeComparator.class) {
             if (elapsedMs > maxDiffTimeMs) {
                 maxDiffTimeMs = elapsedMs;
-                String repoPath = gitRepositoryManager.getCurrentRepository().getIdentifier();
+                String repoPath = null;
+                try {
+                    gitRepositoryManager.getCurrentRepository().getIdentifier();
+                }catch (Exception e){
+                    if (debug) System.out.println("Couldn't get current repository");
+                }
                 log.info("Longest AST diff so far: File '{}', Repo '{}', Time {} ms, Ops: {}, Old SHA: {}, New SHA: {}",
-                        fileName, repoPath, elapsedMs, allOps.size(), oldCommit.getName(), newCommit.getName());
+                        fileName,
+                        repoPath,
+                        elapsedMs,
+                        allOps.size(),
+                        (oldCommit != null ? oldCommit.getName() : "null"),
+                        (newCommit != null ? newCommit.getName() : "null")
+                );
             }
         }
 
@@ -197,11 +208,15 @@ public class TreeComparator {
 
         List<EditOperation> filteredMoveOperations = mergeDeletesAndInsertsIntoUpdates(mergeChildMovesIntoParent(unmutated));
 
+        List<EditOperation> deletedMoveOperations = filteredMoveOperations.stream()
+                .filter(op -> op.type() != MOVE)
+                .toList();
+
         return createFileResult(
                 fileName,
                 oldFile.getAbsolutePath(),
                 newFile.getAbsolutePath(),
-                filteredMoveOperations,
+                deletedMoveOperations,
                 metrics,
                 getCommitName(oldCommit),
                 getCommitName(newCommit)
@@ -297,12 +312,17 @@ public class TreeComparator {
             List<Operation> allRawOps,
             Map<Operation, ClassifiedOperation> classification
     ) {
+
+        if (diff.getRootOperations().size() > 3)
+            return;
+
         for (Operation op : diff.getRootOperations()) {
             EditOperation eo = toEditOperation(op, oldFile, newFile, methodName);
             if (eo != null) {
                 allRawOps.add(op);
                 allOps.add(eo);
                 classification.putIfAbsent(op, new ClassifiedOperation(op));
+
             }
         }
     }
@@ -343,8 +363,8 @@ public class TreeComparator {
         // 3) Find corresponding JavaParser nodes (if any)
         Node jpSrc = null, jpDst = null;
         try {
-            jpSrc = src != null ? TreeUtils.findJavaParserNode(oldFile, src).orElse(null) : null;
-            jpDst = dst != null ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null) : null;
+            //jpSrc = src != null ? TreeUtils.findJavaParserNode(oldFile, src).orElse(null) : null;
+            //jpDst = dst != null ? TreeUtils.findJavaParserNode(newFile, dst).orElse(null) : null;
         } catch (Exception e) {
 
             //System.err.println("Error extracting JavaParser node" + e);

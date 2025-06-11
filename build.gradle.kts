@@ -25,7 +25,7 @@ application {
 dependencies {
     implementation("ch.qos.logback:logback-classic:1.4.14")
 
-    implementation("fr.inria.gforge.spoon.labs:gumtree-spoon-ast-diff:1.110")
+    implementation("fr.inria.gforge.spoon.labs:gumtree-spoon-ast-diff:1.112")
 
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
     implementation("com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.2")
@@ -33,15 +33,17 @@ dependencies {
     // Spring Core and Context for DI
     implementation("org.springframework.boot:spring-boot-starter")
 
-    // Git
-    implementation("org.eclipse.jgit:org.eclipse.jgit:7.2.0.202503040940-r")
-
     // Json output
     implementation("com.google.code.gson:gson:2.13.0")
 
-    //JavaParser
-    implementation("com.github.javaparser:javaparser-core:3.25.4")
+    // JavaParser Core
+    implementation ("com.github.javaparser:javaparser-core:3.25.1") // Use the latest stable version
 
+    // JavaParser Symbol Solver
+    implementation ("com.github.javaparser:javaparser-symbol-solver-core:3.26.4") // Use the same version
+
+    // JGit (if you haven't added it yet)
+    implementation ("org.eclipse.jgit:org.eclipse.jgit:7.3.0.202506031305-r")
     // IO
     implementation("commons-io:commons-io:2.18.0")
 
@@ -67,7 +69,7 @@ sourceSets["main"].java {
     srcDir("build/generated-src/antlr/main")
     srcDir("src/main/java")
     exclude("com/example/test/**")
-
+    exclude("com/example/mutation_tester/mutations_applier/test/**")
 }
 
 tasks.withType<JavaCompile> {

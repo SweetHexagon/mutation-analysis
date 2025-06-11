@@ -174,8 +174,11 @@ public class GitUtils {
                             .filter(d -> {
                                 try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
                                     df.setRepository(repository);
+
+                                    df.setDiffAlgorithm(DiffAlgorithm.getAlgorithm(DiffAlgorithm.SupportedAlgorithm.MYERS));
                                     df.setDiffComparator(RawTextComparator.WS_IGNORE_ALL);
-                                    df.setContext(0);
+                                    df.setContext(3);
+
                                     df.setDetectRenames(true);
 
                                     // split the diff into individual edit blocks
@@ -185,7 +188,7 @@ public class GitUtils {
                                     }
 
                                     // for every block, count the meaningful lines
-                                    boolean pass = true;
+                                    boolean atLeastOneLineChanged = false;
                                     for (Edit e : edits) {
                                         int blockMeanings = DiffUtils.countMeaningfulChangedLinesInBlock(
                                                 repository, oldC, newC, d, e);
@@ -194,13 +197,13 @@ public class GitUtils {
                                             System.out.println("Block " + e + " has "
                                                     + blockMeanings + " meaningful lines");
                                         }
-                                        if (blockMeanings > 2) {
-                                            pass = false;
+                                        if (blockMeanings < 3) {
+                                            atLeastOneLineChanged = true;
                                         }
                                     }
 
                                     // passed: every block had exactly one meaningful changed line
-                                    return pass;
+                                    return atLeastOneLineChanged;
                                 } catch (IOException io) {
                                     if (debug) io.printStackTrace();
                                     return false;

@@ -15,15 +15,14 @@ public class ExperimentalNakedReceiverPattern implements ChangeClassifier.Mutati
     public List<Operation> matchingOperations(List<Operation> ops) {
         List<Operation> matched = new ArrayList<>();
 
-        // Case 1: single UpdateOperation (call(x) → x)
+        // Case 1: Single UpdateOperation (e.g., call(x) → x)
         for (Operation op : ops) {
             if (op instanceof UpdateOperation upd) {
                 CtElement src = upd.getSrcNode();
                 CtElement dst = upd.getDstNode();
-                if (src instanceof CtInvocation<?> inv
-                        && dst instanceof CtExpression<?> expr) {
+                if (src instanceof CtInvocation<?> inv && dst instanceof CtExpression<?> expr) {
                     CtExpression<?> target = inv.getTarget();
-                    if (target != null && expr.toString().equals(target.toString())) {
+                    if (target != null && target.equals(expr)) {
                         matched.add(upd);
                         return matched;
                     }
@@ -31,37 +30,45 @@ public class ExperimentalNakedReceiverPattern implements ChangeClassifier.Mutati
             }
         }
 
-        // Case 2: delete the invocation, then insert or move its receiver
-        DeleteOperation delOp = null;
-        Operation insOrMvOp = null;
+        // Case 2: Delete Invocation + Move/Insert Receiver
+        CtInvocation<?> deletedInvocation = null;
+        CtExpression<?> movedOrInsertedExpr = null;
+        Operation moveOrInsertOp = null;
+        Operation deleteInvOp = null;
+
+        // Find deleted invocation
         for (Operation op : ops) {
-            if (delOp == null && op instanceof DeleteOperation del
-                    && del.getNode() instanceof CtInvocation<?>) {
-                delOp = del;
-                matched.add(delOp);
-            } else if (delOp != null
-                    && (op instanceof InsertOperation || op instanceof MoveOperation)) {
-                CtElement node = (op instanceof InsertOperation ins
-                        ? ins.getNode()
-                        : ((MoveOperation) op).getNode());
-                if (node instanceof CtExpression<?> expr) {
-                    insOrMvOp = op;
-                    matched.add(insOrMvOp);
-                    break;
-                }
+            if (op instanceof DeleteOperation del && del.getNode() instanceof CtInvocation<?> inv) {
+                deletedInvocation = inv;
+                deleteInvOp = del;
+                break;
             }
         }
 
-        // Verify that the inserted/moved expression matches the deleted invocation's receiver
-        if (delOp != null && insOrMvOp != null) {
-            CtInvocation<?> deletedInv = (CtInvocation<?>) delOp.getNode();
-            CtExpression<?> insertedExpr = (CtExpression<?>)
-                    (insOrMvOp instanceof InsertOperation
-                            ? ((InsertOperation) insOrMvOp).getNode()
-                            : ((MoveOperation) insOrMvOp).getNode());
-            CtExpression<?> target = deletedInv.getTarget();
-            if (target != null && insertedExpr.toString().equals(target.toString())) {
-                return matched;
+        if (deletedInvocation != null) {
+            // Find moved or inserted expression matching the receiver
+            for (Operation op : ops) {
+                if (op instanceof InsertOperation || op instanceof MoveOperation) {
+                    CtElement node = (op instanceof InsertOperation ins)
+                            ? ins.getNode()
+                            : ((MoveOperation) op).getNode();
+
+                    if (node instanceof CtExpression<?> expr) {
+                        movedOrInsertedExpr = expr;
+                        moveOrInsertOp = op;
+                        break;
+                    }
+                }
+            }
+
+            // Compare deleted invocation's target with inserted/moved expression
+            if (movedOrInsertedExpr != null) {
+                CtExpression<?> target = deletedInvocation.getTarget();
+                if (target != null && target.equals(movedOrInsertedExpr)) {
+                    matched.add(deleteInvOp);
+                    matched.add(moveOrInsertOp);
+                    return matched;
+                }
             }
         }
 

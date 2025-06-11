@@ -1,5 +1,8 @@
 package com.example;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 
@@ -8,21 +11,20 @@ import com.example.dto.CommitPairDTO;
 import com.example.dto.FileResultDto;
 import com.example.mapper.CommitPairMapper;
 import com.example.mapper.ResultMapper;
+import com.example.mutation_tester.mutation_metadata_processing.MutationLogParser;
+import com.example.mutation_tester.mutations_applier.MutationApplier;
 import com.example.pojo.FileResult;
 import com.example.service.GitRepositoryManager;
 import com.example.util.GitUtils;
 import com.example.util.JsonUtils;
+import com.example.mutation_tester.mutations_applier.custom_patterns.LoopBreakReplacement;
 import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.errors.AmbiguousObjectException;
-import org.eclipse.jgit.errors.IncorrectObjectTypeException;
-import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.SpringApplication;
-import org.springframework.jmx.support.MetricType;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,15 +36,18 @@ public class Main implements CommandLineRunner {
     private final GitRepositoryManager repoManager;
     private final TreeComparator      treeComparator;
     private final GitUtils gitUtils;
+    private final MutationApplier mutationApplier;
+
     EnumMap<MutationKind,Integer> repoPatternCounts =
             new EnumMap<>(MutationKind.class);
 
 
     public Main(GitRepositoryManager repoManager,
-                TreeComparator treeComparator, GitUtils gitUtils) {
+                TreeComparator treeComparator, GitUtils gitUtils, MutationApplier mutationApplier) {
         this.repoManager     = repoManager;
         this.treeComparator  = treeComparator;
         this.gitUtils = gitUtils;
+        this.mutationApplier = mutationApplier;
     }
 
 
@@ -55,18 +60,19 @@ public class Main implements CommandLineRunner {
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            /*"https://github.com/SweetHexagon/pitest-mutators"
-            "https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
+            //"https://github.com/SweetHexagon/pitest-mutators"
+            /*"https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
             "https://github.com/krahets/hello-algo",               // small
             "https://github.com/iluwatar/java-design-patterns"   , // 4 327 commits
             "https://github.com/macrozheng/mall"   ,               // small
-             "https://github.com/doocs/advanced-java",           // small
-            "https://github.com/spring-projects/spring-boot",     // 54 313 commits
-            "https://github.com/MisterBooo/LeetCodeAnimation",     // small
+             "https://github.com/doocs/advanced-java"          // small
+            */
+            "https://github.com/spring-projects/spring-boot"     // 54 313 commits
+            /*"https://github.com/MisterBooo/LeetCodeAnimation",     // small
             "https://github.com/elastic/elasticsearch",            // 86 296 commits
             "https://github.com/kdn251/interviews",                // small
             "https://github.com/TheAlgorithms/Java",               // 2 729 commits
-            */ "https://github.com/spring-projects/spring-framework"/* // 32 698 commits
+             //"https://github.com/spring-projects/spring-framework" // 32 698 commits
             "https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
              "https://github.com/Stirling-Tools/Stirling-PDF",      // small
             "https://github.com/google/guava",                     // 6 901 commits
@@ -75,7 +81,8 @@ public class Main implements CommandLineRunner {
             "https://github.com/dbeaver/dbeaver",                  // 27 028 commits
             "https://github.com/jeecgboot/JeecgBoot",              // small
             "https://github.com/apache/dubbo",                     // 8 414 commits
-            "https://github.com/termux/termux-app"   */              // small
+            "https://github.com/termux/termux-app",   */             // small
+             //"https://github.com/jhy/jsoup"
     );
 
 
@@ -88,8 +95,26 @@ public class Main implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        //mutationApplier.triggerCrashOnMutatedFiles(MutationApplier.CustomMutations.PROCESS_ALL, "D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup");
+
+        //mutationApplier.triggerCrashOnMutatedFiles(MutationApplier.CustomMutations.LOOP_BREAK_REPLACEMENT, "D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup");
+        //mutationApplier.applyMutationToProjectDirectory(MutationApplier.CustomMutations.LOOP_BREAK_REPLACEMENT, "D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup");
+
+        /*var temp = MutationLogParser.parseMutationTrace("D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup\\mutation-trace.log");
+
+        Set<String> uniqueValues = new HashSet<>();
+        for (Set<String> valueSet : temp.values()) {
+            uniqueValues.addAll(valueSet);
+        }
+        System.out.println(uniqueValues.size());*/
+
+        //MutationLogParser.printMethodToTests(temp);
+
+        //loopBreakReplacementTest();
 
         //manualTest();
+
+        //manualTestLocal();
 
         presentation(repoUrls);
 
@@ -166,6 +191,11 @@ public class Main implements CommandLineRunner {
 
     private void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
         long totalStart = System.currentTimeMillis();
+
+        int totalFiles = batch.stream()
+                .mapToInt(pair -> pair.changedFiles().size())
+                .sum();
+        System.out.printf("Processing %d commit pairs with a total of %d changed files%n", batch.size(), totalFiles);
 
         ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
         CompletionService<CommitPairWithFiles> cs = new ExecutorCompletionService<>(exec);
@@ -257,6 +287,28 @@ public class Main implements CommandLineRunner {
         System.out.flush();
     }
 
+    public void loopBreakReplacementTest(){
+        try {
+            Path inputPath = Paths.get("src/main/java/com/example/mutations_applier/test/before.java");
+            // Path to the output file "after.java"
+            Path outputPath = Paths.get("src/main/java/com/example/mutations_applier/test/after.java");
+
+            // Read the content of "before.java"
+            String originalCode = new String(Files.readAllBytes(inputPath));
+
+            // Apply the mutation using loopBreakReplacement
+            LoopBreakReplacement mutator = new LoopBreakReplacement();
+            String mutatedCode = mutator.mutate(originalCode);
+
+            // Write the mutated code to "after.java"
+            Files.write(outputPath, mutatedCode.getBytes());
+
+            System.out.println("Mutation applied. Check after.java.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public  void manualTest() {
 
 
@@ -284,6 +336,18 @@ public class Main implements CommandLineRunner {
         //List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
 
         FileResult result = treeComparator.compareFileInTwoCommits("", oldCommit, newCommit, fileName, true);
+
+        if (result != null) {
+            System.out.println(result);
+        } else {
+            System.out.println("Comparison failed.");
+        }
+
+    }
+
+    public  void manualTestLocal() {
+
+        FileResult result = treeComparator.compareTwoFilePaths("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.java", "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.java", true);
 
         if (result != null) {
             System.out.println(result);
