@@ -9,6 +9,7 @@ import com.example.util.TreeUtils;
 import gumtree.spoon.AstComparator;
 import gumtree.spoon.diff.Diff;
 import gumtree.spoon.diff.operations.*;
+import org.springframework.context.annotation.Scope;
 import spoon.support.visitor.clone.CloneBuilder;
 
 import java.io.OutputStream;
@@ -51,6 +52,7 @@ import spoon.reflect.visitor.filter.TypeFilter;
 import static com.example.EditOperation.Type.*;
 
 @Component
+@Scope("prototype")
 public class TreeComparator {
     private static long maxDiffTimeMs = 0;
 

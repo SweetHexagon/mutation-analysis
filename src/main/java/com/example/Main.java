@@ -22,6 +22,7 @@ import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.SpringApplication;
@@ -34,43 +35,44 @@ import java.util.concurrent.*;
 @SpringBootApplication
 public class Main implements CommandLineRunner {
     private final GitRepositoryManager repoManager;
-    private final TreeComparator      treeComparator;
     private final GitUtils gitUtils;
     private final MutationApplier mutationApplier;
 
-    EnumMap<MutationKind,Integer> repoPatternCounts =
-            new EnumMap<>(MutationKind.class);
+    ConcurrentMap<MutationKind, Integer> repoPatternCounts =
+            new ConcurrentHashMap<>();
+
+
+    private final ObjectProvider<TreeComparator> treeComparatorProvider;
+    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
 
 
     public Main(GitRepositoryManager repoManager,
-                TreeComparator treeComparator, GitUtils gitUtils, MutationApplier mutationApplier) {
+                TreeComparator treeComparator, GitUtils gitUtils, MutationApplier mutationApplier, ObjectProvider<TreeComparator> treeComparatorProvider) {
         this.repoManager     = repoManager;
-        this.treeComparator  = treeComparator;
         this.gitUtils = gitUtils;
         this.mutationApplier = mutationApplier;
+        this.treeComparatorProvider = treeComparatorProvider;
     }
 
 
      String localPath = "repositories";
 
-    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
 
      final int BATCH_SIZE = 500;
 
     final String filteredDir  = "src/main/resources/programOutputFiltered";
 
      List<String> repoUrls = List.of(
-            //"https://github.com/SweetHexagon/pitest-mutators"
-            /*"https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
-            "https://github.com/krahets/hello-algo",               // small
-            "https://github.com/iluwatar/java-design-patterns"   , // 4 327 commits
+            /*//"https://github.com/SweetHexagon/pitest-mutators"
+            "https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
+            "https://github.com/krahets/hello-algo",              // small
+            "https://github.com/iluwatar/java-design-patterns",    // 4 327 commits
             "https://github.com/macrozheng/mall"   ,               // small
-             "https://github.com/doocs/advanced-java"          // small
-            */
-            "https://github.com/spring-projects/spring-boot"     // 54 313 commits
-            /*"https://github.com/MisterBooo/LeetCodeAnimation",     // small
-            "https://github.com/elastic/elasticsearch",            // 86 296 commits
-            "https://github.com/kdn251/interviews",                // small
+             "https://github.com/doocs/advanced-java",          // small
+             //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
+            "https://github.com/MisterBooo/LeetCodeAnimation",     // small
+            //"https://github.com/elastic/elasticsearch",            // 86 296 commits
+            */"https://github.com/kdn251/interviews",                // small
             "https://github.com/TheAlgorithms/Java",               // 2 729 commits
              //"https://github.com/spring-projects/spring-framework" // 32 698 commits
             "https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
@@ -81,8 +83,8 @@ public class Main implements CommandLineRunner {
             "https://github.com/dbeaver/dbeaver",                  // 27 028 commits
             "https://github.com/jeecgboot/JeecgBoot",              // small
             "https://github.com/apache/dubbo",                     // 8 414 commits
-            "https://github.com/termux/termux-app",   */             // small
-             //"https://github.com/jhy/jsoup"
+            "https://github.com/termux/termux-app",                // small
+             "https://github.com/jhy/jsoup"
     );
 
 
@@ -116,9 +118,9 @@ public class Main implements CommandLineRunner {
 
         //manualTestLocal();
 
-        presentation(repoUrls);
+        //presentation(repoUrls);
 
-        //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
+        JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
     }
 
     public void presentation(List<String> repoUrls) throws InterruptedException {
@@ -189,7 +191,8 @@ public class Main implements CommandLineRunner {
         }
     }
 
-    private void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl) {
+    private void processBatch(List<CommitPairWithFiles> batch, String repoDir, String repoUrl)
+    {
         long totalStart = System.currentTimeMillis();
 
         int totalFiles = batch.stream()
@@ -198,64 +201,85 @@ public class Main implements CommandLineRunner {
         System.out.printf("Processing %d commit pairs with a total of %d changed files%n", batch.size(), totalFiles);
 
         ExecutorService exec = Executors.newFixedThreadPool(THREAD_COUNT);
-        CompletionService<CommitPairWithFiles> cs = new ExecutorCompletionService<>(exec);
+        CompletionService<Void> cs = new ExecutorCompletionService<>(exec);
 
-        final int total = batch.size();
-        List<FileResultDto> batchResults = Collections.synchronizedList(new ArrayList<>());
+        Queue<FileResultDto> batchResults = new ConcurrentLinkedQueue<>();
+        ConcurrentMap<MutationKind, Integer> safePatternCounts = new ConcurrentHashMap<>();
 
-        // Silence spoon jdt errors
+        // Silence Spoon JDT errors
         System.setErr(new ErrorFilterPrintStream(System.err));
 
+        ThreadLocal<TreeComparator> localComparator = ThreadLocal.withInitial(() -> treeComparatorProvider.getObject());
+
         long submissionStart = System.currentTimeMillis();
+        int taskCount = 0;
+
         for (CommitPairWithFiles pair : batch) {
-            cs.submit(() -> {
-                for (String file : pair.changedFiles()) {
-                    long comparisonStart = System.nanoTime();
-                    FileResult result = treeComparator.compareFileInTwoCommits(
+            for (String file : pair.changedFiles()) {
+                cs.submit(() -> {
+                    if (Thread.currentThread().isInterrupted()) return null;
+
+                    FileResult result = localComparator.get().compareFileInTwoCommits(
                             repoDir, pair.oldCommit(), pair.newCommit(), file, false
                     );
-                    long comparisonEnd = System.nanoTime();
-                    //System.out.printf("Time to compare file %s: %.2f ms%n", file, (comparisonEnd - comparisonStart) / 1_000_000.0);
 
                     if (result != null) {
-                        Map<String,Integer> fileMetrics = result.getMetrics();
+
+                        Map<String, Integer> fileMetrics = result.getMetrics();
                         if (fileMetrics != null) {
-                            for (var entry : fileMetrics.entrySet()) {
-                                String metricName = entry.getKey().toString();
-                                int count = entry.getValue();
+                            fileMetrics.forEach((key, count) -> {
                                 try {
-                                    MutationKind kind = MutationKind.valueOf(metricName);
-                                    repoPatternCounts.merge(kind, count, Integer::sum);
+                                    MutationKind kind = MutationKind.valueOf(key);
+                                    safePatternCounts.merge(kind, count, Integer::sum);
                                 } catch (IllegalArgumentException ignored) {
-                                    // skip non‐pattern metrics like EDITS
+                                    // Ignore non-pattern metrics
                                 }
-                            }
+                            });
                         }
 
                         if (!result.getEditOperations().isEmpty()) {
                             FileResultDto dto = ResultMapper.toDto(result);
                             batchResults.add(dto);
                         }
+
                     }
-                }
-                return pair;
-            });
+
+
+
+                    return null;
+                });
+                taskCount++;
+            }
         }
+
         long submissionEnd = System.currentTimeMillis();
-        System.out.printf("Time to submit tasks: %.2f seconds%n", (submissionEnd - submissionStart) / 1000.0);
+        System.out.printf("Time to submit %d tasks: %.2f seconds%n", taskCount, (submissionEnd - submissionStart) / 1000.0);
 
         int completed = 0;
         long processingStart = System.currentTimeMillis();
-        while (completed < total) {
+        long lastPrintTime = System.currentTimeMillis();
+
+        while (completed < taskCount) {
             try {
-                Future<CommitPairWithFiles> future = cs.take();
+                Future<Void> future = cs.take();
                 future.get();
                 completed++;
-                printProgressBar(completed, total);
-            } catch (ExecutionException | InterruptedException e) {
-                System.err.println("Task failed: " + e.getMessage());
+
+                long now = System.currentTimeMillis();
+                if (now - lastPrintTime >= 1000 || completed == taskCount) { // throttle to once per second or on final
+                    printProgressBar(completed, taskCount);
+                    lastPrintTime = now;
+                }
+
+            } catch (ExecutionException e) {
+                System.err.println("Task failed: " + e.getCause());
+            } catch (InterruptedException e) {
+                System.err.println("Processing interrupted.");
+                Thread.currentThread().interrupt(); // Preserve interrupt flag
+                break;
             }
         }
+
         long processingEnd = System.currentTimeMillis();
         System.out.printf("Time to process batch: %.2f seconds%n", (processingEnd - processingStart) / 1000.0);
 
@@ -263,16 +287,19 @@ public class Main implements CommandLineRunner {
         System.out.println();
 
         long jsonStart = System.currentTimeMillis();
-        JsonUtils.appendBatchResults(repoUrl, batchResults);
+        JsonUtils.appendBatchResults(repoUrl, new ArrayList<>(batchResults));
         batchResults.clear();
         long jsonEnd = System.currentTimeMillis();
         System.out.printf("Time to write JSON results: %.2f seconds%n", (jsonEnd - jsonStart) / 1000.0);
 
-        System.gc();
         long totalEnd = System.currentTimeMillis();
         System.out.printf("Total time for processBatch: %.2f seconds%n", (totalEnd - totalStart) / 1000.0);
-    }
 
+        // Update shared repoPatternCounts after batch is done
+        safePatternCounts.forEach((k, v) ->
+                repoPatternCounts.merge(k, v, Integer::sum)
+        );
+    }
 
     private  void printProgressBar(int current, int total) {
         int width = 50;
@@ -335,7 +362,8 @@ public class Main implements CommandLineRunner {
         //List<String> extractedPaths = GitUtils.extractFileAtTwoCommits(localPath + "\\" + localRepoName, relativePath, oldSha, newSha, outputDir);
         //List<String> extractedPaths = List.of("D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file1.java", "D:\\\\Java projects\\\\mutation-analysis\\\\src\\\\main\\\\java\\\\com\\\\example\\\\test\\\\file2.java");
 
-        FileResult result = treeComparator.compareFileInTwoCommits("", oldCommit, newCommit, fileName, true);
+        TreeComparator localComparator = treeComparatorProvider.getObject();
+        FileResult result = localComparator.compareFileInTwoCommits("", oldCommit, newCommit, fileName, true);
 
         if (result != null) {
             System.out.println(result);
@@ -347,7 +375,12 @@ public class Main implements CommandLineRunner {
 
     public  void manualTestLocal() {
 
-        FileResult result = treeComparator.compareTwoFilePaths("D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.java", "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.java", true);
+        TreeComparator localComparator = treeComparatorProvider.getObject();
+        FileResult result = localComparator.compareTwoFilePaths(
+                "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file1.java",
+                "D:\\Java projects\\mutation-analysis\\src\\main\\java\\com\\example\\test\\file2.java",
+                true
+        );
 
         if (result != null) {
             System.out.println(result);

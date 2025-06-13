@@ -18,6 +18,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.ConcurrentMap;
 
 import com.example.pojo.FileResult;
 
@@ -37,7 +38,7 @@ public class JsonUtils {
     }
 
     public static void appendPatternCounts(String repoUrl,
-                                           EnumMap<MutationKind,Integer> counts) {
+                                           ConcurrentMap<MutationKind,Integer> counts) {
         String path = "src/main/resources/programOutput/" + generateComparisonFileName(repoUrl);
         try {
             ObjectNode root = (ObjectNode) mapper.readTree(new File(path));

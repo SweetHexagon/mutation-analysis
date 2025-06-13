@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
 public class GitUtils {
+    private static final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
 
     private static GitRepositoryManager repoManager;
 
@@ -146,8 +147,7 @@ public class GitUtils {
         Map<String, List<DiffEntry>> diffCache = new ConcurrentHashMap<>();
 
         // Setup thread pool
-        int threads = Runtime.getRuntime().availableProcessors();
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
         CompletionService<Void> cs = new ExecutorCompletionService<>(executor);
 
         // Submit tasks
@@ -199,6 +199,8 @@ public class GitUtils {
                                         }
                                         if (blockMeanings < 3) {
                                             atLeastOneLineChanged = true;
+                                        }else {
+                                            return false;
                                         }
                                     }
 
