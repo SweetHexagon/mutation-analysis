@@ -3,6 +3,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.4"
     id("java")
     id("application")
+    id("jacoco")
 }
 
 group = "com.example"
@@ -12,6 +13,10 @@ java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(21))
     }
+}
+
+jacoco {
+    toolVersion = "0.8.13"
 }
 
 repositories {
@@ -37,10 +42,13 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.0")
 
     // JavaParser Core
-    implementation ("com.github.javaparser:javaparser-core:3.25.1") // Use the latest stable version
+    implementation("com.github.javaparser:javaparser-core:3.26.4")
 
     // JavaParser Symbol Solver
     implementation ("com.github.javaparser:javaparser-symbol-solver-core:3.26.4") // Use the same version
+
+    // to be able to call JacocoCLI from Java:
+    implementation("org.jacoco:org.jacoco.cli:0.8.13")
 
     // JGit (if you haven't added it yet)
     implementation ("org.eclipse.jgit:org.eclipse.jgit:7.3.0.202506031305-r")

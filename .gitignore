@@ -48,5 +48,6 @@ src/main/resources/extractedFiles/**
 src/main/resources/programOutput/**
 src/main/resources/programOutputFiltered/**
 src/main/resources/uniqueEditOperations/**
+repositories_for_tests/**
 repositories/**
 
