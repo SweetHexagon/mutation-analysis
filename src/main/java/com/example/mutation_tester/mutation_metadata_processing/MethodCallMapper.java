@@ -1,5 +1,14 @@
 package com.example.mutation_tester.mutation_metadata_processing;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.FileWriter;
 import java.io.StringReader;
 import java.nio.file.Paths;
@@ -8,42 +17,49 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-import org.xml.sax.EntityResolver;
-import org.xml.sax.InputSource;
 
 public class MethodCallMapper {
 
+    // Constants for default execution via main method
     private static final String XML_REPORT_PATH = "repositories_for_tests/jsoup/target/pit-reports/linecoverage.xml";
     private static final String JSON_OUTPUT_PATH = "method-test-mapping.json";
     private static final String TARGET_METHOD = "";
 
+    /**
+     * Main method to run the process with default constant values.
+     */
     public static void main(String[] args) throws Exception {
-        Map<String, Set<String>> rawMethodTestMap = parseCoverage(XML_REPORT_PATH);
+        MethodCallMapper mapper = new MethodCallMapper();
+        mapper.processCoverage(XML_REPORT_PATH, TARGET_METHOD);
+    }
+
+    /**
+     * Parses a PIT line coverage XML report to map methods to the tests that cover them.
+     *
+     * @param xmlReportPath The file path to the PIT linecoverage.xml report.
+     * @param targetMethod  The specific method to find tests for. If empty, processes all methods
+     * and generates a JSON file.
+     * @throws Exception if parsing or file writing fails.
+     */
+    public void processCoverage(String xmlReportPath, String targetMethod) throws Exception {
+        Map<String, Set<String>> rawMethodTestMap = parseCoverage(xmlReportPath);
 
         // Format keys and test values to be clean and ready-to-use
         Map<String, Set<String>> formattedMap = new HashMap<>();
         for (Map.Entry<String, Set<String>> entry : rawMethodTestMap.entrySet()) {
             String methodSig = entry.getKey();
             String simpleMethod = methodSig.contains("(") ? methodSig.substring(0, methodSig.indexOf("(")) : methodSig;
-            Set<String> formattedTests = entry.getValue().stream().map(MethodCallMapper::formatTest).collect(Collectors.toSet());
+            Set<String> formattedTests = entry.getValue().stream()
+                    .map(MethodCallMapper::formatTest)
+                    .collect(Collectors.toSet());
             formattedMap.put(simpleMethod, formattedTests);
         }
 
-        if (TARGET_METHOD.isEmpty()) {
-            /*formattedMap.forEach((method, tests) -> {
-                System.out.println(method + " ->");
-                tests.forEach(System.out::println);
-                System.out.println();
-            });*/
-
-            Set<String> allTests = formattedMap.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+        if (targetMethod == null || targetMethod.isEmpty()) {
+            // If no specific method is targeted, process all and write to JSON
+            Set<String> allTests = formattedMap.values().stream()
+                    .flatMap(Set::stream)
+                    .collect(Collectors.toSet());
             System.out.println("Total unique tests: " + allTests.size());
 
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -53,13 +69,14 @@ public class MethodCallMapper {
             }
 
         } else {
-            Set<String> tests = formattedMap.getOrDefault(TARGET_METHOD, new HashSet<>());
+            // If a specific method is targeted, find its tests and print a Maven command
+            Set<String> tests = formattedMap.getOrDefault(targetMethod, new HashSet<>());
             if (tests.isEmpty()) {
-                System.err.println("No tests found for method: " + TARGET_METHOD);
+                System.err.println("No tests found for method: " + targetMethod);
                 return;
             }
 
-            System.out.println("Tests for " + TARGET_METHOD + ":");
+            System.out.println("Tests for " + targetMethod + ":");
             tests.forEach(System.out::println);
             System.out.println();
 

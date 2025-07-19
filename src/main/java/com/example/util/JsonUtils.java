@@ -279,6 +279,49 @@ public class JsonUtils {
             }
         }
     }
+    public static void splitEditOperationsJson(String jsonPath, int batchSize, String outputDir, boolean keepOnlyUpdates) throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
 
+        // Load the JSON from file
+        JsonNode rootNode = mapper.readTree(new File(jsonPath));
+        JsonNode editOperationsNode = rootNode.get("editOperations");
+
+        if (editOperationsNode == null || !editOperationsNode.isArray()) {
+            System.out.println("Invalid or missing 'editOperations' array in JSON.");
+            return;
+        }
+
+        // Filter if required
+        ArrayNode filteredOps = mapper.createArrayNode();
+        for (JsonNode node : editOperationsNode) {
+            if (!keepOnlyUpdates || "UPDATE".equals(node.get("type").asText())) {
+                filteredOps.add(node);
+            }
+        }
+
+        int total = filteredOps.size();
+        int batchCount = (total + batchSize - 1) / batchSize;
+
+        // Ensure output directory exists
+        new File(outputDir).mkdirs();
+
+        for (int i = 0; i < batchCount; i++) {
+            int start = i * batchSize;
+            int end = Math.min(start + batchSize, total);
+
+            ArrayNode batchArray = mapper.createArrayNode();
+            for (int j = start; j < end; j++) {
+                batchArray.add(filteredOps.get(j));
+            }
+
+            ObjectNode batchRoot = mapper.createObjectNode();
+            batchRoot.set("editOperations", batchArray);
+
+            File outFile = new File(outputDir + "/edit_operations_batch_" + (i + 1) + ".json");
+            mapper.writerWithDefaultPrettyPrinter().writeValue(outFile, batchRoot);
+        }
+
+        System.out.println("Split " + total + " operations into " + batchCount + " batches (keepOnlyUpdates=" + keepOnlyUpdates + ")");
+    }
 }
 
