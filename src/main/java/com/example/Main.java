@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
-
 import com.example.classifier.MutationKind;
 import com.example.dto.CommitPairDTO;
 import com.example.dto.FileResultDto;
@@ -47,55 +46,40 @@ public class Main implements CommandLineRunner {
     ConcurrentMap<MutationKind, Integer> repoPatternCounts =
             new ConcurrentHashMap<>();
 
-
     private final ObjectProvider<TreeComparator> treeComparatorProvider;
-    private  final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
+    private final int THREAD_COUNT = Runtime.getRuntime().availableProcessors()/2;
 
+    String localPath = "repositories";
+    final int BATCH_SIZE = 500;
+    final String filteredDir = "src/main/resources/programOutputFiltered";
+
+    List<String> repoUrls = List.of(
+            "https://github.com/kdn251/interviews",
+            "https://github.com/TheAlgorithms/Java",
+            "https://github.com/NationalSecurityAgency/ghidra",
+            "https://github.com/Stirling-Tools/Stirling-PDF",
+            "https://github.com/google/guava",
+            "https://github.com/ReactiveX/RxJava",
+            "https://github.com/skylot/jadx",
+            "https://github.com/dbeaver/dbeaver",
+            "https://github.com/jeecgboot/JeecgBoot",
+            "https://github.com/apache/dubbo",
+            "https://github.com/termux/termux-app",
+            "https://github.com/jhy/jsoup"
+    );
+
+    List<String> extensions = List.of(".java");
 
     public Main(GitRepositoryManager repoManager,
-                TreeComparator treeComparator, GitUtils gitUtils, MutationApplier mutationApplier, ObjectProvider<TreeComparator> treeComparatorProvider) {
-        this.repoManager     = repoManager;
+                TreeComparator treeComparator,
+                GitUtils gitUtils,
+                MutationApplier mutationApplier,
+                ObjectProvider<TreeComparator> treeComparatorProvider) {
+        this.repoManager = repoManager;
         this.gitUtils = gitUtils;
         this.mutationApplier = mutationApplier;
         this.treeComparatorProvider = treeComparatorProvider;
     }
-
-
-     String localPath = "repositories";
-
-
-     final int BATCH_SIZE = 500;
-
-    final String filteredDir  = "src/main/resources/programOutputFiltered";
-
-     List<String> repoUrls = List.of(
-            /*//"https://github.com/SweetHexagon/pitest-mutators"
-            "https://github.com/Snailclimb/JavaGuide"    ,        // 5 800 commits
-            "https://github.com/krahets/hello-algo",              // small
-            "https://github.com/iluwatar/java-design-patterns",    // 4 327 commits
-            "https://github.com/macrozheng/mall"   ,               // small
-             "https://github.com/doocs/advanced-java",          // small
-             //"https://github.com/spring-projects/spring-boot",     // 54 313 commits
-            "https://github.com/MisterBooo/LeetCodeAnimation",     // small
-            //"https://github.com/elastic/elasticsearch",            // 86 296 commits
-            */"https://github.com/kdn251/interviews",                // small
-            "https://github.com/TheAlgorithms/Java",               // 2 729 commits
-             //"https://github.com/spring-projects/spring-framework" // 32 698 commits
-            "https://github.com/NationalSecurityAgency/ghidra",    // 14 553 commits
-             "https://github.com/Stirling-Tools/Stirling-PDF",      // small
-            "https://github.com/google/guava",                     // 6 901 commits
-            "https://github.com/ReactiveX/RxJava",                 // 6 218 commits
-            "https://github.com/skylot/jadx",                      // small
-            "https://github.com/dbeaver/dbeaver",                  // 27 028 commits
-            "https://github.com/jeecgboot/JeecgBoot",              // small
-            "https://github.com/apache/dubbo",                     // 8 414 commits
-            "https://github.com/termux/termux-app",                // small
-             "https://github.com/jhy/jsoup"
-    );
-
-
-     List<String> extensions = List.of(
-            ".java");
 
     public static void main(String[] args) {
         SpringApplication.run(Main.class, args);
@@ -104,7 +88,7 @@ public class Main implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
 
-// --- Configuration Paths ---
+        // --- Configuration Paths ---
         String projectPath = "D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup";
         String pitReportPath = projectPath + "/target/pit-reports/linecoverage.xml";
         String jsonMapPath = "method-test-mapping.json";
@@ -114,30 +98,23 @@ public class Main implements CommandLineRunner {
         // =========================================================================
         System.out.println("STEP 0: Generating method-to-test map...");
         MethodCallMapper mapper = new MethodCallMapper();
-        // Call the mapper to generate the JSON file from the latest coverage report
-        mapper.processCoverage(pitReportPath, ""); // An empty target method generates the full map
+        mapper.processCoverage(pitReportPath, "");
         System.out.println("✅ Map generation complete. Saved to: " + jsonMapPath);
-
 
         // =========================================================================
         // STEP 1: Apply Mutations and Get List of Changed Methods
         // =========================================================================
         System.out.println("\nSTEP 1: Applying mutations...");
-
         var mutationResults = mutationApplier.applyMutationToProjectDirectory(
                 MutationApplier.CustomMutations.LOOP_BREAK_REPLACEMENT, projectPath);
-
         Set<String> mutatedMethods = new HashSet<>(mutationResults);
-
         System.out.println("✅ Found " + mutatedMethods.size() + " unique mutated methods across all files.");
-
 
         // =========================================================================
         // STEP 2: Load the Full Test Map from the Generated JSON
         // =========================================================================
         System.out.println("\nSTEP 2: Loading test map from JSON...");
         Map<String, Set<String>> allTestsMap = loadTestMapFromJson(jsonMapPath);
-
 
         // =========================================================================
         // STEP 3: Filter for Tests Covering Mutated Methods
@@ -146,6 +123,7 @@ public class Main implements CommandLineRunner {
         Map<String, Set<String>> testsToRunMap = allTestsMap.entrySet().stream()
                 .filter(entry -> mutatedMethods.contains(entry.getKey()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
         System.out.println("✅ Found " + testsToRunMap.values().stream().mapToLong(Set::size).sum()
                 + " relevant tests to run.");
         long uniqueCount = testsToRunMap.values().stream()
@@ -154,13 +132,11 @@ public class Main implements CommandLineRunner {
                 .count();
         System.out.println("✅ Found " + uniqueCount + " unique relevant tests to run.");
 
-
         // =========================================================================
         // STEP 4: Execute Relevant Tests and Collect Failures
         // =========================================================================
         System.out.println("\nSTEP 4: Executing relevant tests...");
         Map<String, Set<String>> failedTestsReport = runBatchedMavenTests(testsToRunMap, projectPath);
-
 
         // =========================================================================
         // STEP 5: Print Final Report
@@ -169,29 +145,22 @@ public class Main implements CommandLineRunner {
         if (failedTestsReport.isEmpty()) {
             System.out.println("✅ All relevant tests passed. The mutations were not detected by the test suite.");
         } else {
-            System.out.println("❌ Mutation Detected! The following tests failed:");
-            failedTestsReport.forEach((method, failedTests) -> {
-                System.out.println("\nFor Mutated Method: " + method);
-                failedTests.forEach(test -> System.out.println("  -> Failed Test: " + test));
-            });
+            System.out.println("❌ Mutation Detected! Found " + failedTestsReport.size() + " methods with failing tests.");
         }
 
-        var result = mutationApplier.applyMutationToProjectDirectory(MutationApplier.CustomMutations.LOOP_BREAK_REPLACEMENT, "D:\\Java projects\\mutation-analysis\\repositories_for_tests\\jsoup");
-        for (var record : result){
-            System.out.println(record);
-        }
-
-        //MutationLogParser.printMethodToTests(temp);
-
-        //loopBreakReplacementTest();
-
-        //manualTest();
-
-        //manualTestLocal();
-
-        //presentation(repoUrls);
-
-        //JsonUtils.aggregateUniqueOperations(filteredDir, "src/main/resources/uniqueEditOperations/aggregated_unique_operations.json");
+        // =====================
+        // STATISTICS PER METHOD
+        // =====================
+        System.out.println("\n--- STATISTICS PER MUTATED METHOD ---");
+        testsToRunMap.forEach((method, relevantTests) -> {
+            int total = relevantTests.size();
+            int failed = failedTestsReport.getOrDefault(method, Collections.emptySet()).size();
+            int passed = total - failed;
+            System.out.println("Method: " + method);
+            System.out.println("  Total relevant tests: " + total);
+            System.out.println("  Passed: " + passed);
+            System.out.println("  Failed: " + failed);
+        });
     }
 
     private static Map<String, Set<String>> loadTestMapFromJson(String jsonFilePath) {
@@ -199,14 +168,11 @@ public class Main implements CommandLineRunner {
         Map<String, Set<String>> testMap = new HashMap<>();
 
         try {
-            // Jackson can directly read into a Map<String, List<String>>
-            // We use TypeReference to properly deserialize generic types
             Map<String, List<String>> rawMap = objectMapper.readValue(
                     new File(jsonFilePath),
                     new TypeReference<Map<String, List<String>>>() {}
             );
 
-            // Convert List<String> values to Set<String> for uniqueness and consistency
             for (Map.Entry<String, List<String>> entry : rawMap.entrySet()) {
                 testMap.put(entry.getKey(), new HashSet<>(entry.getValue()));
             }
@@ -216,18 +182,13 @@ public class Main implements CommandLineRunner {
         } catch (IOException e) {
             System.err.println("Error loading test map from JSON file: " + jsonFilePath);
             System.err.println("Error details: " + e.getMessage());
-            // Optionally, rethrow the exception or handle it based on your application's error policy
         }
         return testMap;
     }
 
-
     private static final Pattern TEST_SUMMARY_PATTERN = Pattern.compile("Tests run: (\\d+), Failures: (\\d+), Errors: (\\d+), Skipped: (\\d+)");
-    // Pattern to extract specific failed test names from Surefire output
-// Example: [ERROR] org.jsoup.nodes.AttributesTest.testListSkipsInternal -- Time elapsed: 0.035 s <<< FAILURE!
     private static final Pattern FAILURE_LINE_PATTERN = Pattern.compile("\\[ERROR\\]\\s+([^\\s]+)\\s+--\\s+Time elapsed:.*<<< FAILURE!");
     private static final Pattern ERROR_LINE_PATTERN = Pattern.compile("\\[ERROR\\]\\s+([^\\s]+)\\s+--\\s+Time elapsed:.*<<< ERROR!");
-
 
     public Map<String, Set<String>> runBatchedMavenTests(
             Map<String, Set<String>> testsToRunMap,
@@ -244,9 +205,6 @@ public class Main implements CommandLineRunner {
         }
         invoker.setMavenHome(mavenHome);
 
-        // Pattern already defined as:
-        // private static final Pattern TEST_SUMMARY_PATTERN =
-        //     Pattern.compile("Tests run: (\\d+), Failures: (\\d+), Errors: (\\d+), Skipped: (\\d+)");
         for (Map.Entry<String, Set<String>> entry : testsToRunMap.entrySet()) {
             String batchKey = entry.getKey();
             Set<String> tests = entry.getValue();
@@ -254,11 +212,9 @@ public class Main implements CommandLineRunner {
 
             Path includesFile = null;
             try {
-                // write the include-file in UTF-8 so clean won't delete it
                 includesFile = Files.createTempFile("mvn-includes-", ".txt");
                 Files.write(includesFile, tests, StandardCharsets.UTF_8);
 
-                // build the Maven request: only 'test', no 'clean'
                 InvocationRequest req = new DefaultInvocationRequest();
                 req.setPomFile(new File(projectPath, "pom.xml"));
                 req.setGoals(Collections.singletonList("test"));
@@ -269,7 +225,6 @@ public class Main implements CommandLineRunner {
                 props.setProperty("maven.test.failure.ignore", "true");
                 req.setProperties(props);
 
-                // capture output
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 PrintStreamHandler handler = new PrintStreamHandler(new PrintStream(baos), false);
                 invoker.setOutputHandler(handler);
@@ -278,51 +233,49 @@ public class Main implements CommandLineRunner {
                 InvocationResult result = invoker.execute(req);
                 String mvnLog = baos.toString();
 
-                // parse the LAST summary line
                 Matcher summaryMatcher = TEST_SUMMARY_PATTERN.matcher(mvnLog);
                 int run = 0, failures = 0, errors = 0, skipped = 0;
                 while (summaryMatcher.find()) {
-                    run      = Integer.parseInt(summaryMatcher.group(1));
+                    run = Integer.parseInt(summaryMatcher.group(1));
                     failures = Integer.parseInt(summaryMatcher.group(2));
-                    errors   = Integer.parseInt(summaryMatcher.group(3));
-                    skipped  = Integer.parseInt(summaryMatcher.group(4));
+                    errors = Integer.parseInt(summaryMatcher.group(3));
+                    skipped = Integer.parseInt(summaryMatcher.group(4));
                 }
                 if (run == 0 && result.getExitCode() != 0) {
-                    run      = tests.size();
+                    run = tests.size();
                     failures = tests.size();
                 }
 
                 int passed = run - failures - errors - skipped;
-                totalRun      += run;
+                totalRun += run;
                 totalFailures += failures;
-                totalErrors   += errors;
-                totalSkipped  += skipped;
+                totalErrors += errors;
+                totalSkipped += skipped;
 
-                // per-batch debug log
                 System.out.printf(
                         "[BATCH %s] run=%d, passed=%d, failures=%d, errors=%d, skipped=%d%n",
                         batchKey, run, passed, failures, errors, skipped
                 );
 
-                // collect individual failed and errored tests
+                // THE KEY FIX: Collect ALL failed tests, not just those in the original test set
                 Set<String> failedThisBatch = new HashSet<>();
+
                 Matcher fm = FAILURE_LINE_PATTERN.matcher(mvnLog);
                 while (fm.find()) {
                     String formatted = convertSurefireToCustomFormat(fm.group(1));
-                    if (tests.contains(formatted)) {
-                        failedThisBatch.add(formatted);
-                    }
+                    failedThisBatch.add(formatted);
                 }
+
                 Matcher em = ERROR_LINE_PATTERN.matcher(mvnLog);
                 while (em.find()) {
                     String formatted = convertSurefireToCustomFormat(em.group(1));
-                    if (tests.contains(formatted)) {
-                        failedThisBatch.add(formatted);
-                    }
+                    failedThisBatch.add(formatted);
                 }
+
                 if (!failedThisBatch.isEmpty()) {
                     failedTestsReport.put(batchKey, failedThisBatch);
                 }
+
             } finally {
                 if (includesFile != null) {
                     Files.deleteIfExists(includesFile);
@@ -341,10 +294,6 @@ public class Main implements CommandLineRunner {
         return failedTestsReport;
     }
 
-
-
-
-    // Helper to convert Surefire's "package.Class.method" to your "package.Class#method" format
     private static String convertSurefireToCustomFormat(String surefireFormat) {
         if (surefireFormat == null || surefireFormat.isEmpty()) {
             return surefireFormat;
@@ -355,7 +304,7 @@ public class Main implements CommandLineRunner {
             String methodName = surefireFormat.substring(lastDot + 1);
             return className + "#" + methodName;
         }
-        return surefireFormat; // If no dot, it might just be a class name
+        return surefireFormat;
     }
 
     // Helper method to extract failed test names from Maven output.

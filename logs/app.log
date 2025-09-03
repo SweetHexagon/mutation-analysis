@@ -3562,3 +3562,6 @@ Caused by: java.io.FileNotFoundException: D:\Java projects\mutation-analysis\rep
 2025-07-20 00:05:39 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 20224 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
 2025-07-20 00:05:39 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
 2025-07-20 00:05:39 INFO  com.example.Main - Started Main in 0.564 seconds (process running for 1.056)
+2025-09-03 21:01:44 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 4620 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 21:01:44 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 21:01:45 INFO  com.example.Main - Started Main in 0.611 seconds (process running for 1.248)
