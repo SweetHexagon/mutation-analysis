@@ -87,3 +87,13 @@ tasks.withType<JavaCompile> {
 tasks.test {
     useJUnitPlatform()
 }
+
+// Увеличиваем память JVM для задачи run
+tasks.withType<JavaExec> {
+    jvmArgs = listOf(
+        "-Xms2g",
+        "-Xmx8g",
+        "-XX:+UseG1GC",
+        "-XX:MaxGCPauseMillis=200"
+    )
+}

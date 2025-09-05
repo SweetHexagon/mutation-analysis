@@ -3565,3 +3565,308 @@ Caused by: java.io.FileNotFoundException: D:\Java projects\mutation-analysis\rep
 2025-09-03 21:01:44 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 4620 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
 2025-09-03 21:01:44 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
 2025-09-03 21:01:45 INFO  com.example.Main - Started Main in 0.611 seconds (process running for 1.248)
+2025-09-03 21:51:17 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 15940 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 21:51:17 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 21:51:17 INFO  com.example.Main - Started Main in 0.569 seconds (process running for 1.05)
+2025-09-03 21:51:49 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 2144 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 21:51:49 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 21:51:49 INFO  com.example.Main - Started Main in 0.58 seconds (process running for 1.058)
+2025-09-03 22:00:35 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 11372 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 22:00:35 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 22:00:36 INFO  com.example.Main - Started Main in 0.612 seconds (process running for 1.148)
+2025-09-03 22:00:36 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-03 22:00:36 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Failed to execute CommandLineRunner
+	at org.springframework.boot.SpringApplication.lambda$callRunner$6(SpringApplication.java:797)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:66)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:85)
+Caused by: java.io.FileNotFoundException: D:\Java projects\mutation-analysis\repositories_for_tests\commons-lang\target\pit-reports\linecoverage.xml (Системе не удается найти указанный путь)
+	at java.base/java.io.FileInputStream.open0(Native Method)
+	at java.base/java.io.FileInputStream.open(FileInputStream.java:213)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:152)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:106)
+	at java.base/sun.net.www.protocol.file.FileURLConnection.connect(FileURLConnection.java:84)
+	at java.base/sun.net.www.protocol.file.FileURLConnection.getInputStream(FileURLConnection.java:180)
+	at java.xml/com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:654)
+	at java.xml/com.sun.org.apache.xerces.internal.impl.XMLVersionDetector.determineDocVersion(XMLVersionDetector.java:150)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:861)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:825)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XMLParser.parse(XMLParser.java:141)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(DOMParser.java:247)
+	at java.xml/com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(DocumentBuilderImpl.java:342)
+	at java.xml/javax.xml.parsers.DocumentBuilder.parse(DocumentBuilder.java:206)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.parseCoverage(MethodCallMapper.java:135)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.processCoverage(MethodCallMapper.java:58)
+	at com.example.Main.run(Main.java:107)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	... 17 common frames omitted
+2025-09-03 22:08:29 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 20420 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 22:08:29 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 22:08:30 INFO  com.example.Main - Started Main in 0.773 seconds (process running for 1.253)
+2025-09-03 22:08:40 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-03 22:08:40 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Failed to execute CommandLineRunner
+	at org.springframework.boot.SpringApplication.lambda$callRunner$6(SpringApplication.java:797)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:66)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:85)
+Caused by: org.xml.sax.SAXParseException: XML document structures must start and end within the same entity.
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(DOMParser.java:262)
+	at java.xml/com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(DocumentBuilderImpl.java:342)
+	at java.xml/javax.xml.parsers.DocumentBuilder.parse(DocumentBuilder.java:206)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.parseCoverage(MethodCallMapper.java:135)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.processCoverage(MethodCallMapper.java:58)
+	at com.example.Main.run(Main.java:107)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	... 17 common frames omitted
+2025-09-03 22:12:17 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 21384 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-03 22:12:17 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-03 22:12:18 INFO  com.example.Main - Started Main in 0.73 seconds (process running for 1.214)
+2025-09-04 21:17:17 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 29560 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:17:17 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:17:18 INFO  com.example.Main - Started Main in 0.839 seconds (process running for 1.39)
+2025-09-04 21:38:11 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 16092 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:38:11 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:38:11 INFO  com.example.Main - Started Main in 0.58 seconds (process running for 1.132)
+2025-09-04 21:38:33 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 25856 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:38:33 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:38:34 INFO  com.example.Main - Started Main in 0.568 seconds (process running for 1.054)
+2025-09-04 21:38:41 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-04 21:38:41 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Maven compilation failed with exit code: 1
+	at com.example.Main.compileMavenProject(Main.java:751)
+	at com.example.Main.run(Main.java:105)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:86)
+2025-09-04 21:40:10 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 28284 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:40:10 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:40:11 INFO  com.example.Main - Started Main in 0.566 seconds (process running for 1.03)
+2025-09-04 21:40:43 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-04 21:40:43 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Failed to execute CommandLineRunner
+	at org.springframework.boot.SpringApplication.lambda$callRunner$6(SpringApplication.java:797)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:66)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:86)
+Caused by: java.io.FileNotFoundException: D:\Java projects\mutation-analysis\repositories_for_tests\commons-lang\target\pit-reports\linecoverage.xml (Системе не удается найти указанный путь)
+	at java.base/java.io.FileInputStream.open0(Native Method)
+	at java.base/java.io.FileInputStream.open(FileInputStream.java:213)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:152)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:106)
+	at java.base/sun.net.www.protocol.file.FileURLConnection.connect(FileURLConnection.java:84)
+	at java.base/sun.net.www.protocol.file.FileURLConnection.getInputStream(FileURLConnection.java:180)
+	at java.xml/com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:654)
+	at java.xml/com.sun.org.apache.xerces.internal.impl.XMLVersionDetector.determineDocVersion(XMLVersionDetector.java:150)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:861)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:825)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.XMLParser.parse(XMLParser.java:141)
+	at java.xml/com.sun.org.apache.xerces.internal.parsers.AbstractSAXParser.parse(AbstractSAXParser.java:1224)
+	at java.xml/com.sun.org.apache.xerces.internal.jaxp.SAXParserImpl$JAXPSAXParser.parse(SAXParserImpl.java:637)
+	at java.xml/com.sun.org.apache.xerces.internal.jaxp.SAXParserImpl.parse(SAXParserImpl.java:326)
+	at java.xml/javax.xml.parsers.SAXParser.parse(SAXParser.java:330)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.parseCoverage(MethodCallMapper.java:155)
+	at com.example.mutation_tester.mutation_metadata_processing.MethodCallMapper.processCoverage(MethodCallMapper.java:56)
+	at com.example.Main.run(Main.java:116)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	... 17 common frames omitted
+2025-09-04 21:44:44 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 22432 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:44:44 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:44:44 INFO  com.example.Main - Started Main in 0.572 seconds (process running for 1.068)
+2025-09-04 21:45:11 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-04 21:45:11 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: PITest execution failed with exit code: 1
+	at com.example.Main.runPitestMutationCoverage(Main.java:798)
+	at com.example.Main.run(Main.java:108)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:86)
+2025-09-04 21:46:51 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 432 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:46:51 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:46:51 INFO  com.example.Main - Started Main in 0.575 seconds (process running for 1.075)
+2025-09-04 21:50:52 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 10268 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 21:50:52 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 21:50:53 INFO  com.example.Main - Started Main in 0.86 seconds (process running for 1.592)
+2025-09-04 22:09:30 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 2836 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 22:09:30 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 22:09:30 INFO  com.example.Main - Started Main in 0.599 seconds (process running for 1.099)
+2025-09-04 22:35:03 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 13184 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 22:35:03 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 22:35:03 INFO  com.example.Main - Started Main in 0.662 seconds (process running for 1.521)
+2025-09-04 22:35:12 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-04 22:35:12 ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Maven compilation failed with exit code: 1
+	at com.example.Main.compileMavenProject(Main.java:773)
+	at com.example.Main.run(Main.java:105)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:790)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:789)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:341)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1343)
+	at com.example.Main.main(Main.java:86)
+2025-09-04 22:46:29 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 11224 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 22:46:29 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 22:46:30 INFO  com.example.Main - Started Main in 0.79 seconds (process running for 1.51)
+2025-09-04 22:55:01 INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-09-04 22:55:09 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 11488 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 22:55:09 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 22:55:09 INFO  com.example.Main - Started Main in 0.737 seconds (process running for 1.351)
+2025-09-04 23:39:34 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 468 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 23:39:34 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 23:39:34 INFO  com.example.Main - Started Main in 0.727 seconds (process running for 1.353)
+2025-09-04 23:40:19 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 13044 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 23:40:19 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 23:40:19 INFO  com.example.Main - Started Main in 0.574 seconds (process running for 1.059)
+2025-09-04 23:42:50 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 3756 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 23:42:50 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 23:42:51 INFO  com.example.Main - Started Main in 0.584 seconds (process running for 1.113)
+2025-09-04 23:47:15 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 16460 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 23:47:15 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 23:47:16 INFO  com.example.Main - Started Main in 0.813 seconds (process running for 1.415)
+2025-09-04 23:59:38 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 20892 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-04 23:59:38 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-04 23:59:38 INFO  com.example.Main - Started Main in 0.674 seconds (process running for 1.228)
+2025-09-05 20:29:15 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 22360 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 20:29:15 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 20:29:15 INFO  com.example.Main - Started Main in 0.894 seconds (process running for 1.487)
+2025-09-05 20:46:57 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 2088 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 20:46:57 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 20:46:57 INFO  com.example.Main - Started Main in 0.603 seconds (process running for 1.403)
+2025-09-05 21:00:27 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 4508 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:00:27 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:00:28 INFO  com.example.Main - Started Main in 0.944 seconds (process running for 1.618)
+2025-09-05 21:19:21 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 18020 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:19:21 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:19:21 INFO  com.example.Main - Started Main in 0.874 seconds (process running for 1.411)
+2025-09-05 21:20:19 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 10980 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:20:19 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:20:19 INFO  com.example.Main - Started Main in 0.572 seconds (process running for 1.049)
+2025-09-05 21:29:45 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 5640 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:29:45 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:29:46 INFO  com.example.Main - Started Main in 0.929 seconds (process running for 1.436)
+2025-09-05 21:43:39 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 21376 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:43:39 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:43:39 INFO  com.example.Main - Started Main in 0.579 seconds (process running for 1.085)
+2025-09-05 21:43:48 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 28864 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:43:48 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:43:48 INFO  com.example.Main - Started Main in 0.597 seconds (process running for 1.071)
+2025-09-05 21:51:26 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 11808 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 21:51:26 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 21:51:27 INFO  com.example.Main - Started Main in 0.637 seconds (process running for 1.116)
+2025-09-05 22:05:18 INFO  com.example.Main - Starting Main using Java 21.0.7 with PID 28940 (D:\Java projects\mutation-analysis\build\classes\java\main started by aless in D:\Java projects\mutation-analysis)
+2025-09-05 22:05:18 INFO  com.example.Main - No active profile set, falling back to 1 default profile: "default"
+2025-09-05 22:05:18 INFO  com.example.Main - Started Main in 0.57 seconds (process running for 1.066)

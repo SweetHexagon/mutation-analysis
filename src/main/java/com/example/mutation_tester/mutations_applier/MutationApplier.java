@@ -2,12 +2,10 @@ package com.example.mutation_tester.mutations_applier;
 
 
 import com.example.mutation_tester.mutations_applier.custom_patterns.LoopBreakReplacement;
-import com.example.mutation_tester.mutations_applier.custom_patterns.ProcessAll;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.stmt.BlockStmt;
+import com.example.mutation_tester.mutations_applier.custom_patterns.TakeWhileDropWhileReplacement;
+import com.example.mutation_tester.mutations_applier.custom_patterns.SafeStreamMethodReplacement;
+import com.example.mutation_tester.mutations_applier.custom_patterns.OptionalMethodReplacement;
+import com.example.mutation_tester.mutations_applier.custom_patterns.AssertionMethodReplacement;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -25,12 +23,18 @@ public class MutationApplier {
 
     public MutationApplier(){
         customMutantPatternHashMap.put(CustomMutations.LOOP_BREAK_REPLACEMENT, new LoopBreakReplacement());
-        customMutantPatternHashMap.put(CustomMutations.PROCESS_ALL, new ProcessAll());
-
+        customMutantPatternHashMap.put(CustomMutations.TAKE_WHILE_DROP_WHILE_REPLACEMENT, new TakeWhileDropWhileReplacement());
+        customMutantPatternHashMap.put(CustomMutations.SAFE_STREAM_METHOD_REPLACEMENT, new SafeStreamMethodReplacement());
+        customMutantPatternHashMap.put(CustomMutations.OPTIONAL_METHOD_REPLACEMENT, new OptionalMethodReplacement());
+        customMutantPatternHashMap.put(CustomMutations.ASSERTION_METHOD_REPLACEMENT, new AssertionMethodReplacement());
     }
+
     public enum CustomMutations {
         LOOP_BREAK_REPLACEMENT,
-        PROCESS_ALL
+        TAKE_WHILE_DROP_WHILE_REPLACEMENT,
+        SAFE_STREAM_METHOD_REPLACEMENT,
+        OPTIONAL_METHOD_REPLACEMENT,
+        ASSERTION_METHOD_REPLACEMENT,
     }
     public String getMutatedCode(CustomMutations mutation, String code){
         return customMutantPatternHashMap.get(mutation).mutate(code).getMutatedUnit().toString() ;
@@ -79,6 +83,98 @@ public class MutationApplier {
         return new ArrayList<>(allAffected);
     }
 
+    /**
+     * Identifies methods that can be mutated without actually applying the mutations.
+     * This is used to get a list of all mutable methods before applying mutations one by one.
+     *
+     * @param mutation the type of mutation to apply
+     * @param rootPath the root directory to scan
+     * @return list of method signatures that can be mutated
+     */
+    public List<String> identifyMutableMethods(CustomMutations mutation, String rootPath) {
+        Path rootDir = Paths.get(rootPath);
+        if (!Files.exists(rootDir) || !Files.isDirectory(rootDir)) {
+            System.err.println("Error: The path does not exist or is not a directory: " + rootPath);
+            return Collections.emptyList();
+        }
 
+        CustomMutantPattern pattern = customMutantPatternHashMap.get(mutation);
+        Set<String> allMutableMethods = new LinkedHashSet<>();
 
+        try (var pathStream = Files.walk(rootDir)) {
+            pathStream
+                    .filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> !p.toString().contains("/test/") && !p.toString().contains("\\test\\"))
+                    .forEach(javaFile -> {
+                        try {
+                            String originalCode = Files.readString(javaFile);
+                            // Apply mutation but don't save the result - just collect affected methods
+                            MutationResult result = pattern.mutate(originalCode);
+                            List<String> affected = result.getAffectedMethods();
+                            allMutableMethods.addAll(affected);
+                        } catch (IOException e) {
+                            System.err.println("Error processing file: " + javaFile);
+                            e.printStackTrace();
+                        }
+                    });
+        } catch (IOException e) {
+            System.err.println("Failed to walk directory: " + rootPath);
+            e.printStackTrace();
+        }
+
+        return new ArrayList<>(allMutableMethods);
+    }
+
+    /**
+     * Applies mutation to a specific method only, leaving other methods unchanged.
+     *
+     * @param mutation the type of mutation to apply
+     * @param rootPath the root directory to scan
+     * @param targetMethodSignature the method signature to mutate (e.g., "org.example.Class.methodName")
+     * @return true if the mutation was successfully applied, false otherwise
+     */
+    public boolean applyMutationToSpecificMethod(CustomMutations mutation, String rootPath, String targetMethodSignature) {
+        Path rootDir = Paths.get(rootPath);
+        if (!Files.exists(rootDir) || !Files.isDirectory(rootDir)) {
+            System.err.println("Error: The path does not exist or is not a directory: " + rootPath);
+            return false;
+        }
+
+        CustomMutantPattern pattern = customMutantPatternHashMap.get(mutation);
+        AtomicBoolean mutationApplied = new AtomicBoolean(false);
+
+        try (var pathStream = Files.walk(rootDir)) {
+            pathStream
+                    .filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> !p.toString().contains("/test/") && !p.toString().contains("\\test\\"))
+                    .forEach(javaFile -> {
+                        try {
+                            String originalCode = Files.readString(javaFile);
+                            MutationResult result = pattern.mutate(originalCode);
+                            List<String> affected = result.getAffectedMethods();
+
+                            // Check if this file contains the target method
+                            if (affected.contains(targetMethodSignature)) {
+                                // Apply mutation only to the specific method
+                                // We need to create a targeted mutation that only affects the specified method
+                                MutationResult targetedResult = pattern.mutateSpecificMethod(originalCode, targetMethodSignature);
+
+                                if (targetedResult != null && !targetedResult.getAffectedMethods().isEmpty()) {
+                                    Files.writeString(javaFile, targetedResult.getMutatedUnit().toString());
+                                    mutationApplied.set(true);
+                                    System.out.println("Applied targeted mutation to: " + targetMethodSignature + " in " + javaFile);
+                                }
+                            }
+                        } catch (IOException e) {
+                            System.err.println("Error processing file: " + javaFile);
+                            e.printStackTrace();
+                        }
+                    });
+        } catch (IOException e) {
+            System.err.println("Failed to walk directory: " + rootPath);
+            e.printStackTrace();
+        }
+
+        return mutationApplied.get();
+    }
 }

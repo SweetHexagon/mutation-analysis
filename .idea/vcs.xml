@@ -24,6 +24,7 @@
     <mapping directory="$PROJECT_DIR$/repositories/spring-boot" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/spring-framework" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories/termux-app" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/repositories_for_tests/commons-lang" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/repositories_for_tests/jsoup" vcs="Git" />
   </component>
 </project>

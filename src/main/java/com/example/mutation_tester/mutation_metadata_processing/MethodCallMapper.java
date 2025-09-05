@@ -2,15 +2,13 @@ package com.example.mutation_tester.mutation_metadata_processing;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
 import java.io.FileWriter;
-import java.io.StringReader;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +40,19 @@ public class MethodCallMapper {
      * @throws Exception if parsing or file writing fails.
      */
     public void processCoverage(String xmlReportPath, String targetMethod) throws Exception {
+        processCoverage(xmlReportPath, targetMethod, "default-project");
+    }
+
+    /**
+     * Parses a PIT line coverage XML report to map methods to the tests that cover them.
+     *
+     * @param xmlReportPath The file path to the PIT linecoverage.xml report.
+     * @param targetMethod  The specific method to find tests for. If empty, processes all methods
+     * and generates a JSON file.
+     * @param projectName   The name of the project to include in the output filename.
+     * @throws Exception if parsing or file writing fails.
+     */
+    public void processCoverage(String xmlReportPath, String targetMethod, String projectName) throws Exception {
         Map<String, Set<String>> rawMethodTestMap = parseCoverage(xmlReportPath);
 
         // Format keys and test values to be clean and ready-to-use
@@ -56,16 +67,17 @@ public class MethodCallMapper {
         }
 
         if (targetMethod == null || targetMethod.isEmpty()) {
-            // If no specific method is targeted, process all and write to JSON
+            // If no specific method is targeted, process all and write to JSON with project name
             Set<String> allTests = formattedMap.values().stream()
                     .flatMap(Set::stream)
                     .collect(Collectors.toSet());
             System.out.println("Total unique tests: " + allTests.size());
 
+            String outputPath = projectName + "-method-test-mapping.json";
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            try (FileWriter writer = new FileWriter(JSON_OUTPUT_PATH)) {
+            try (FileWriter writer = new FileWriter(outputPath)) {
                 gson.toJson(formattedMap, writer);
-                System.out.println("JSON mapping written to " + JSON_OUTPUT_PATH);
+                System.out.println("JSON mapping written to " + outputPath);
             }
 
         } else {
@@ -107,37 +119,40 @@ public class MethodCallMapper {
 
     private static Map<String, Set<String>> parseCoverage(String xmlFile) throws Exception {
         Map<String, Set<String>> map = new HashMap<>();
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        dbf.setXIncludeAware(false);
-        dbf.setExpandEntityReferences(false);
+        SAXParserFactory factory = SAXParserFactory.newInstance();
+        factory.setNamespaceAware(true);
+        SAXParser saxParser = factory.newSAXParser();
 
-        DocumentBuilder db = dbf.newDocumentBuilder();
-        db.setEntityResolver((publicId, systemId) -> new InputSource(new StringReader("")));
+        DefaultHandler handler = new DefaultHandler() {
+            boolean isMethodElement = false;
+            String currentMethod = "";
+            Set<String> currentTests = null;
 
-        Document doc = db.parse(Paths.get(xmlFile).toFile());
-        NodeList blocks = doc.getElementsByTagName("block");
-
-        for (int i = 0; i < blocks.getLength(); i++) {
-            Element block = (Element) blocks.item(i);
-            String methodSig = block.getAttribute("method");
-            if (methodSig.startsWith("<init>") || methodSig.isEmpty()) continue;
-
-            String classAndMethod = block.getAttribute("classname") + "." + methodSig;
-            NodeList tests = block.getElementsByTagName("test");
-            if (tests.getLength() == 0) continue;
-
-            Set<String> set = map.computeIfAbsent(classAndMethod, k -> new HashSet<>());
-            for (int j = 0; j < tests.getLength(); j++) {
-                String testName = ((Element) tests.item(j)).getAttribute("name");
-                if (testName != null && !testName.isEmpty()) {
-                    set.add(testName);
+            @Override
+            public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
+                if (qName.equals("block")) {
+                    String methodSig = attributes.getValue("method");
+                    if (methodSig != null && !methodSig.startsWith("<init>") && !methodSig.isEmpty()) {
+                        currentMethod = attributes.getValue("classname") + "." + methodSig;
+                        currentTests = new HashSet<>();
+                    }
+                } else if (qName.equals("test") && currentTests != null) {
+                    String testName = attributes.getValue("name");
+                    if (testName != null && !testName.isEmpty()) {
+                        currentTests.add(testName);
+                    }
                 }
             }
-        }
+
+            @Override
+            public void endElement(String uri, String localName, String qName) throws SAXException {
+                if (qName.equals("block") && currentMethod != null && currentTests != null) {
+                    map.put(currentMethod, currentTests);
+                }
+            }
+        };
+
+        saxParser.parse(Paths.get(xmlFile).toFile(), handler);
         return map;
     }
 
